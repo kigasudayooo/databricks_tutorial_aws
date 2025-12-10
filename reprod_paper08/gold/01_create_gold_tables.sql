@@ -1,17 +1,28 @@
 -- Databricks notebook source
 -- MAGIC %md
--- MAGIC # Gold Layer: テーブル定義（DDL）
+-- MAGIC # Gold Layer: テーブル定義（DDL） - Unity Catalog対応
 -- MAGIC
 -- MAGIC このノートブックでは、Gold層の分析結果テーブルを作成します。
+-- MAGIC
+-- MAGIC ## Unity Catalog 構造
+-- MAGIC
+-- MAGIC ```
+-- MAGIC reprod_paper08 (catalog)
+-- MAGIC   └── gold (schema)
+-- MAGIC       ├── table2_age_distribution
+-- MAGIC       ├── table3_medication
+-- MAGIC       ├── table4_procedures
+-- MAGIC       └── summary
+-- MAGIC ```
 -- MAGIC
 -- MAGIC ## Gold層のテーブル構成
 -- MAGIC
 -- MAGIC | テーブル名 | 内容 | レコード数 |
 -- MAGIC |-----------|------|-----------|
--- MAGIC | gold_table2_age_distribution | 年齢層別分布（Table 2） | 10（9年齢群+合計） |
--- MAGIC | gold_table3_medication | 年齢層別薬剤使用率（Table 3） | 10 |
--- MAGIC | gold_table4_procedures | 年齢層別手術実施率（Table 4） | 10 |
--- MAGIC | gold_summary | 主要結果サマリー | 6-8 |
+-- MAGIC | table2_age_distribution | 年齢層別分布（Table 2） | 10（9年齢群+合計） |
+-- MAGIC | table3_medication | 年齢層別薬剤使用率（Table 3） | 10 |
+-- MAGIC | table4_procedures | 年齢層別手術実施率（Table 4） | 10 |
+-- MAGIC | summary | 主要結果サマリー | 6-8 |
 -- MAGIC
 -- MAGIC ## 論文との対応
 -- MAGIC
@@ -22,20 +33,20 @@
 -- COMMAND ----------
 
 -- MAGIC %md
--- MAGIC ## データベース選択
-
--- COMMAND ----------
-
-USE reprod_paper08;
+-- MAGIC ## 前提条件
+-- MAGIC
+-- MAGIC - `00_setup_catalog.sql` が実行済みであること
+-- MAGIC - カタログ `reprod_paper08` とスキーマ `gold` が作成済みであること
+-- MAGIC - Silver層のデータが生成済みであること
 
 -- COMMAND ----------
 
 -- MAGIC %md
--- MAGIC ## 1. gold_table2_age_distribution（年齢層別分布）
+-- MAGIC ## 1. table2_age_distribution（年齢層別分布）
 
 -- COMMAND ----------
 
-CREATE TABLE IF NOT EXISTS gold_table2_age_distribution (
+CREATE TABLE IF NOT EXISTS reprod_paper08.gold.table2_age_distribution (
   age_group STRING COMMENT '年齢群（16-19, ..., 85+, Total）',
   n BIGINT COMMENT 'RA患者数',
   pct_of_total DOUBLE COMMENT '全RA患者に占める割合（%）',
@@ -47,11 +58,11 @@ CREATE TABLE IF NOT EXISTS gold_table2_age_distribution (
 )
 USING DELTA
 COMMENT 'Gold層: Table 2 - 年齢層別RA患者分布、性別比、有病率'
-LOCATION 'dbfs:/user/hive/warehouse/reprod_paper08.db/gold_table2_age_distribution';
+;
 
 -- COMMAND ----------
 
-SELECT "Table gold_table2_age_distribution created successfully" AS status;
+SELECT "Table reprod_paper08.gold.table2_age_distribution created successfully" AS status;
 
 -- COMMAND ----------
 
@@ -60,7 +71,7 @@ SELECT "Table gold_table2_age_distribution created successfully" AS status;
 
 -- COMMAND ----------
 
-CREATE TABLE IF NOT EXISTS gold_table3_medication (
+CREATE TABLE IF NOT EXISTS reprod_paper08.gold.table3_medication (
   age_group STRING COMMENT '年齢群',
   n BIGINT COMMENT 'RA患者数',
   MTX DOUBLE COMMENT 'MTX使用率（%）',
@@ -79,11 +90,11 @@ CREATE TABLE IF NOT EXISTS gold_table3_medication (
 )
 USING DELTA
 COMMENT 'Gold層: Table 3 - 年齢層別薬剤使用パターン'
-LOCATION 'dbfs:/user/hive/warehouse/reprod_paper08.db/gold_table3_medication';
+;
 
 -- COMMAND ----------
 
-SELECT "Table gold_table3_medication created successfully" AS status;
+SELECT "Table reprod_paper08.gold.table3_medication created successfully" AS status;
 
 -- COMMAND ----------
 
@@ -92,7 +103,7 @@ SELECT "Table gold_table3_medication created successfully" AS status;
 
 -- COMMAND ----------
 
-CREATE TABLE IF NOT EXISTS gold_table4_procedures (
+CREATE TABLE IF NOT EXISTS reprod_paper08.gold.table4_procedures (
   age_group STRING COMMENT '年齢群',
   n BIGINT COMMENT 'RA患者数',
   TJR DOUBLE COMMENT '人工関節全置換術実施率（%）',
@@ -104,11 +115,11 @@ CREATE TABLE IF NOT EXISTS gold_table4_procedures (
 )
 USING DELTA
 COMMENT 'Gold層: Table 4 - 年齢層別手術・検査実施率'
-LOCATION 'dbfs:/user/hive/warehouse/reprod_paper08.db/gold_table4_procedures';
+;
 
 -- COMMAND ----------
 
-SELECT "Table gold_table4_procedures created successfully" AS status;
+SELECT "Table reprod_paper08.gold.table4_procedures created successfully" AS status;
 
 -- COMMAND ----------
 
@@ -117,7 +128,7 @@ SELECT "Table gold_table4_procedures created successfully" AS status;
 
 -- COMMAND ----------
 
-CREATE TABLE IF NOT EXISTS gold_summary (
+CREATE TABLE IF NOT EXISTS reprod_paper08.gold.summary (
   metric STRING COMMENT '指標名',
   reproduced STRING COMMENT '再現値',
   paper STRING COMMENT '論文値',
@@ -125,11 +136,11 @@ CREATE TABLE IF NOT EXISTS gold_summary (
 )
 USING DELTA
 COMMENT 'Gold層: 主要結果サマリー - 論文値との比較'
-LOCATION 'dbfs:/user/hive/warehouse/reprod_paper08.db/gold_summary';
+;
 
 -- COMMAND ----------
 
-SELECT "Table gold_summary created successfully" AS status;
+SELECT "Table reprod_paper08.gold.summary created successfully" AS status;
 
 -- COMMAND ----------
 
@@ -138,7 +149,7 @@ SELECT "Table gold_summary created successfully" AS status;
 
 -- COMMAND ----------
 
-SHOW TABLES IN reprod_paper08 LIKE 'gold*';
+SHOW TABLES IN reprod_paper08.gold;
 
 -- COMMAND ----------
 
@@ -148,7 +159,7 @@ SHOW TABLES IN reprod_paper08 LIKE 'gold*';
 -- COMMAND ----------
 
 -- Table 2のスキーマ確認
-DESCRIBE EXTENDED gold_table2_age_distribution;
+DESCRIBE EXTENDED reprod_paper08.gold.table2_age_distribution;
 
 -- COMMAND ----------
 
@@ -157,11 +168,17 @@ DESCRIBE EXTENDED gold_table2_age_distribution;
 -- MAGIC
 -- MAGIC Gold層の全テーブルの作成が完了しました。
 -- MAGIC
--- MAGIC ### 作成されたテーブル
--- MAGIC 1. ✅ gold_table2_age_distribution
--- MAGIC 2. ✅ gold_table3_medication
--- MAGIC 3. ✅ gold_table4_procedures
--- MAGIC 4. ✅ gold_summary
+-- MAGIC ### 作成されたテーブル（Unity Catalog）
+-- MAGIC 1. ✅ `reprod_paper08.gold.table2_age_distribution`
+-- MAGIC 2. ✅ `reprod_paper08.gold.table3_medication`
+-- MAGIC 3. ✅ `reprod_paper08.gold.table4_procedures`
+-- MAGIC 4. ✅ `reprod_paper08.gold.summary`
+-- MAGIC
+-- MAGIC ### 検証クエリ
+-- MAGIC ```sql
+-- MAGIC -- 全テーブルの確認
+-- MAGIC SHOW TABLES IN reprod_paper08.gold;
+-- MAGIC ```
 -- MAGIC
 -- MAGIC ### 次のステップ
 -- MAGIC 次のノートブックを実行して分析を実施してください：

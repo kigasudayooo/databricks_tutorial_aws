@@ -302,39 +302,39 @@ PROCEDURE_TYPES = {
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## データベース設定
+# MAGIC ## Unity Catalog設定
 
 # COMMAND ----------
 
-# データベース名
-DATABASE_NAME = "reprod_paper08"
+# Unity Catalog 3階層構造
+CATALOG_NAME = "reprod_paper08"
+BRONZE_SCHEMA = "bronze"
+SILVER_SCHEMA = "silver"
+GOLD_SCHEMA = "gold"
 
-# テーブル命名規則
+# テーブル命名規則（Unity Catalog対応: catalog.schema.table）
 # Bronze層
-BRONZE_PREFIX = "bronze_"
 BRONZE_TABLES = {
-    "patients": f"{BRONZE_PREFIX}patients",
-    "re_receipt": f"{BRONZE_PREFIX}re_receipt",
-    "sy_disease": f"{BRONZE_PREFIX}sy_disease",
-    "iy_medication": f"{BRONZE_PREFIX}iy_medication",
-    "si_procedure": f"{BRONZE_PREFIX}si_procedure",
-    "ho_insurer": f"{BRONZE_PREFIX}ho_insurer",
+    "patients": f"{CATALOG_NAME}.{BRONZE_SCHEMA}.patients",
+    "re_receipt": f"{CATALOG_NAME}.{BRONZE_SCHEMA}.re_receipt",
+    "sy_disease": f"{CATALOG_NAME}.{BRONZE_SCHEMA}.sy_disease",
+    "iy_medication": f"{CATALOG_NAME}.{BRONZE_SCHEMA}.iy_medication",
+    "si_procedure": f"{CATALOG_NAME}.{BRONZE_SCHEMA}.si_procedure",
+    "ho_insurer": f"{CATALOG_NAME}.{BRONZE_SCHEMA}.ho_insurer",
 }
 
 # Silver層
-SILVER_PREFIX = "silver_"
 SILVER_TABLES = {
-    "ra_patients_def3": f"{SILVER_PREFIX}ra_patients_def3",
-    "ra_definitions_summary": f"{SILVER_PREFIX}ra_definitions_summary",
+    "ra_patients_def3": f"{CATALOG_NAME}.{SILVER_SCHEMA}.ra_patients_def3",
+    "ra_definitions_summary": f"{CATALOG_NAME}.{SILVER_SCHEMA}.ra_definitions_summary",
 }
 
 # Gold層
-GOLD_PREFIX = "gold_"
 GOLD_TABLES = {
-    "table2_age_distribution": f"{GOLD_PREFIX}table2_age_distribution",
-    "table3_medication": f"{GOLD_PREFIX}table3_medication",
-    "table4_procedures": f"{GOLD_PREFIX}table4_procedures",
-    "summary": f"{GOLD_PREFIX}summary",
+    "table2_age_distribution": f"{CATALOG_NAME}.{GOLD_SCHEMA}.table2_age_distribution",
+    "table3_medication": f"{CATALOG_NAME}.{GOLD_SCHEMA}.table3_medication",
+    "table4_procedures": f"{CATALOG_NAME}.{GOLD_SCHEMA}.table4_procedures",
+    "summary": f"{CATALOG_NAME}.{GOLD_SCHEMA}.summary",
 }
 
 # COMMAND ----------

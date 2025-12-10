@@ -1,15 +1,24 @@
 -- Databricks notebook source
 -- MAGIC %md
--- MAGIC # Silver Layer: テーブル定義（DDL）
+-- MAGIC # Silver Layer: テーブル定義（DDL） - Unity Catalog対応
 -- MAGIC
 -- MAGIC このノートブックでは、Silver層のテーブルを作成します。
+-- MAGIC
+-- MAGIC ## Unity Catalog 構造
+-- MAGIC
+-- MAGIC ```
+-- MAGIC reprod_paper08 (catalog)
+-- MAGIC   └── silver (schema)
+-- MAGIC       ├── ra_patients_def3
+-- MAGIC       └── ra_definitions_summary
+-- MAGIC ```
 -- MAGIC
 -- MAGIC ## Silver層のテーブル構成
 -- MAGIC
 -- MAGIC | テーブル名 | 内容 | 予想レコード数 |
 -- MAGIC |-----------|------|---------------|
--- MAGIC | silver_ra_patients_def3 | Definition 3のRA患者マスタ | ~650 |
--- MAGIC | silver_ra_definitions_summary | RA定義別患者数サマリー | 4 |
+-- MAGIC | ra_patients_def3 | Definition 3のRA患者マスタ | ~650 |
+-- MAGIC | ra_definitions_summary | RA定義別患者数サマリー | 4 |
 -- MAGIC
 -- MAGIC ## RA患者定義
 -- MAGIC
@@ -20,20 +29,20 @@
 -- COMMAND ----------
 
 -- MAGIC %md
--- MAGIC ## データベース選択
-
--- COMMAND ----------
-
-USE reprod_paper08;
+-- MAGIC ## 前提条件
+-- MAGIC
+-- MAGIC - `00_setup_catalog.sql` が実行済みであること
+-- MAGIC - カタログ `reprod_paper08` とスキーマ `silver` が作成済みであること
+-- MAGIC - Bronze層のデータが生成済みであること
 
 -- COMMAND ----------
 
 -- MAGIC %md
--- MAGIC ## 1. silver_ra_patients_def3（RA患者マスタ）
+-- MAGIC ## 1. ra_patients_def3（RA患者マスタ）
 
 -- COMMAND ----------
 
-CREATE TABLE IF NOT EXISTS silver_ra_patients_def3 (
+CREATE TABLE IF NOT EXISTS reprod_paper08.silver.ra_patients_def3 (
   patient_id BIGINT COMMENT '患者ID',
   共通キー STRING COMMENT '共通キー（匿名化ID）',
   age INT COMMENT '年齢',
@@ -77,32 +86,30 @@ CREATE TABLE IF NOT EXISTS silver_ra_patients_def3 (
   any_RA_surgery INT COMMENT 'RA関連手術フラグ（TJR or ARTHROPLASTY or SYNOVECTOMY）'
 )
 USING DELTA
-COMMENT 'Silver層: Definition 3 によるRA患者マスタ（ICD-10 + DMARDs ≥2ヶ月）'
-LOCATION 'dbfs:/user/hive/warehouse/reprod_paper08.db/silver_ra_patients_def3';
+COMMENT 'Silver層: Definition 3 によるRA患者マスタ（ICD-10 + DMARDs ≥2ヶ月）';
 
 -- COMMAND ----------
 
-SELECT "Table silver_ra_patients_def3 created successfully" AS status;
+SELECT "Table reprod_paper08.silver.ra_patients_def3 created successfully" AS status;
 
 -- COMMAND ----------
 
 -- MAGIC %md
--- MAGIC ## 2. silver_ra_definitions_summary（RA定義別サマリー）
+-- MAGIC ## 2. ra_definitions_summary（RA定義別サマリー）
 
 -- COMMAND ----------
 
-CREATE TABLE IF NOT EXISTS silver_ra_definitions_summary (
+CREATE TABLE IF NOT EXISTS reprod_paper08.silver.ra_definitions_summary (
   definition STRING COMMENT 'RA定義名（def_0, def_2, def_3, def_4）',
   n_patients BIGINT COMMENT '該当患者数',
   prevalence_pct DOUBLE COMMENT '有病率（%）'
 )
 USING DELTA
-COMMENT 'Silver層: RA定義別の患者数と有病率サマリー'
-LOCATION 'dbfs:/user/hive/warehouse/reprod_paper08.db/silver_ra_definitions_summary';
+COMMENT 'Silver層: RA定義別の患者数と有病率サマリー';
 
 -- COMMAND ----------
 
-SELECT "Table silver_ra_definitions_summary created successfully" AS status;
+SELECT "Table reprod_paper08.silver.ra_definitions_summary created successfully" AS status;
 
 -- COMMAND ----------
 
@@ -111,7 +118,7 @@ SELECT "Table silver_ra_definitions_summary created successfully" AS status;
 
 -- COMMAND ----------
 
-SHOW TABLES IN reprod_paper08 LIKE 'silver*';
+SHOW TABLES IN reprod_paper08.silver;
 
 -- COMMAND ----------
 
@@ -121,7 +128,7 @@ SHOW TABLES IN reprod_paper08 LIKE 'silver*';
 -- COMMAND ----------
 
 -- RA患者マスタのスキーマ確認
-DESCRIBE EXTENDED silver_ra_patients_def3;
+DESCRIBE EXTENDED reprod_paper08.silver.ra_patients_def3;
 
 -- COMMAND ----------
 
@@ -130,9 +137,18 @@ DESCRIBE EXTENDED silver_ra_patients_def3;
 -- MAGIC
 -- MAGIC Silver層の全テーブルの作成が完了しました。
 -- MAGIC
--- MAGIC ### 作成されたテーブル
--- MAGIC 1. ✅ silver_ra_patients_def3
--- MAGIC 2. ✅ silver_ra_definitions_summary
+-- MAGIC ### 作成されたテーブル（Unity Catalog）
+-- MAGIC 1. ✅ `reprod_paper08.silver.ra_patients_def3`
+-- MAGIC 2. ✅ `reprod_paper08.silver.ra_definitions_summary`
+-- MAGIC
+-- MAGIC ### 検証クエリ
+-- MAGIC ```sql
+-- MAGIC -- 全テーブルの確認
+-- MAGIC SHOW TABLES IN reprod_paper08.silver;
+-- MAGIC
+-- MAGIC -- カウント確認（データ変換後）
+-- MAGIC SELECT COUNT(*) FROM reprod_paper08.silver.ra_patients_def3;  -- ~650
+-- MAGIC ```
 -- MAGIC
 -- MAGIC ### 次のステップ
 -- MAGIC 次のノートブックを実行してデータを変換してください：

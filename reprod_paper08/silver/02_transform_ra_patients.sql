@@ -1,6 +1,6 @@
 -- Databricks notebook source
 -- MAGIC %md
--- MAGIC # Silver Layer: RA患者定義適用とデータ変換（SQL）
+-- MAGIC # Silver Layer: RA患者定義適用とデータ変換（SQL） - Unity Catalog対応
 -- MAGIC
 -- MAGIC このノートブックでは、Bronze層データにRA患者定義を適用し、Silver層データを作成します。
 -- MAGIC
@@ -18,11 +18,11 @@
 -- COMMAND ----------
 
 -- MAGIC %md
--- MAGIC ## データベース選択
-
--- COMMAND ----------
-
-USE reprod_paper08;
+-- MAGIC ## 前提条件
+-- MAGIC
+-- MAGIC - `00_setup_catalog.sql` が実行済みであること
+-- MAGIC - Bronze層のテーブルが作成され、データが生成済みであること
+-- MAGIC - Silver層のテーブルが作成済みであること（`01_create_silver_tables.sql`）
 
 -- COMMAND ----------
 
@@ -78,7 +78,7 @@ SELECT "All DMARDs codes defined" AS status;
 -- RA関連ICD-10コードを持つ患者を抽出
 CREATE OR REPLACE TEMP VIEW ra_patients_def0 AS
 SELECT DISTINCT 共通キー
-FROM bronze_sy_disease
+FROM reprod_paper08.bronze.sy_disease
 WHERE ICD10コード IN (SELECT code FROM ra_icd10_codes);
 
 -- 患者数を確認
@@ -98,8 +98,8 @@ CREATE OR REPLACE TEMP VIEW dmard_prescription_months AS
 SELECT
     iy.共通キー,
     COUNT(DISTINCT re.診療年月) AS prescription_months
-FROM bronze_iy_medication iy
-INNER JOIN bronze_re_receipt re ON iy.検索番号 = re.検索番号
+FROM reprod_paper08.bronze.iy_medication iy
+INNER JOIN reprod_paper08.bronze.re_receipt re ON iy.検索番号 = re.検索番号
 WHERE iy.共通キー IN (SELECT 共通キー FROM ra_patients_def0)
   AND iy.医薬品コード IN (SELECT code FROM all_dmard_codes)
 GROUP BY iy.共通キー;
@@ -149,25 +149,25 @@ SELECT '定義別患者数' AS category;
 SELECT
     'Definition 0 (ICD-10のみ)' AS definition,
     COUNT(*) AS n_patients,
-    ROUND(COUNT(*) * 100.0 / (SELECT COUNT(*) FROM bronze_patients), 2) AS prevalence_pct
+    ROUND(COUNT(*) * 100.0 / (SELECT COUNT(*) FROM reprod_paper08.bronze.patients), 2) AS prevalence_pct
 FROM ra_patients_def0
 UNION ALL
 SELECT
     'Definition 2 (DMARDs ≥1ヶ月)',
     COUNT(*),
-    ROUND(COUNT(*) * 100.0 / (SELECT COUNT(*) FROM bronze_patients), 2)
+    ROUND(COUNT(*) * 100.0 / (SELECT COUNT(*) FROM reprod_paper08.bronze.patients), 2)
 FROM ra_patients_def2
 UNION ALL
 SELECT
     'Definition 3 (DMARDs ≥2ヶ月) ★採用★',
     COUNT(*),
-    ROUND(COUNT(*) * 100.0 / (SELECT COUNT(*) FROM bronze_patients), 2)
+    ROUND(COUNT(*) * 100.0 / (SELECT COUNT(*) FROM reprod_paper08.bronze.patients), 2)
 FROM ra_patients_def3
 UNION ALL
 SELECT
     'Definition 4 (DMARDs ≥6ヶ月)',
     COUNT(*),
-    ROUND(COUNT(*) * 100.0 / (SELECT COUNT(*) FROM bronze_patients), 2)
+    ROUND(COUNT(*) * 100.0 / (SELECT COUNT(*) FROM reprod_paper08.bronze.patients), 2)
 FROM ra_patients_def4;
 
 -- COMMAND ----------
@@ -199,7 +199,7 @@ SELECT
     -- CS (コルチコステロイド)
     MAX(CASE WHEN iy.医薬品コード IN ('2454001','2454002','2454003') THEN 1 ELSE 0 END) AS CS
 FROM ra_patients_def3 p
-LEFT JOIN bronze_iy_medication iy ON p.共通キー = iy.共通キー
+LEFT JOIN reprod_paper08.bronze.iy_medication iy ON p.共通キー = iy.共通キー
 GROUP BY p.共通キー;
 
 -- 薬剤使用率を確認
@@ -236,7 +236,7 @@ SELECT
     MAX(CASE WHEN si.procedure_type = 'ULTRASOUND' THEN 1 ELSE 0 END) AS ULTRASOUND,
     MAX(CASE WHEN si.procedure_type = 'BMD' THEN 1 ELSE 0 END) AS BMD
 FROM ra_patients_def3 p
-LEFT JOIN bronze_si_procedure si ON p.共通キー = si.共通キー
+LEFT JOIN reprod_paper08.bronze.si_procedure si ON p.共通キー = si.共通キー
 GROUP BY p.共通キー;
 
 -- 手術・検査実施率を確認
@@ -272,7 +272,7 @@ SELECT
         WHEN p.age BETWEEN 80 AND 84 THEN '80-84'
         ELSE '85+'
     END AS age_group
-FROM bronze_patients p
+FROM reprod_paper08.bronze.patients p
 WHERE p.共通キー IN (SELECT 共通キー FROM ra_patients_def3);
 
 -- 基本統計を確認
@@ -290,7 +290,7 @@ FROM ra_patients_base;
 -- COMMAND ----------
 
 -- 全情報を結合してSilverテーブルに挿入
-INSERT OVERWRITE TABLE silver_ra_patients_def3
+INSERT OVERWRITE TABLE reprod_paper08.silver.ra_patients_def3
 SELECT
     pb.patient_id,
     pb.共通キー,
@@ -354,7 +354,7 @@ LEFT JOIN dmard_prescription_months dpm ON pb.共通キー = dpm.共通キー;
 
 -- 挿入件数を確認
 SELECT COUNT(*) AS inserted_records
-FROM silver_ra_patients_def3;
+FROM reprod_paper08.silver.ra_patients_def3;
 
 -- COMMAND ----------
 
@@ -364,29 +364,29 @@ FROM silver_ra_patients_def3;
 -- COMMAND ----------
 
 -- 定義別患者数と有病率をサマリーテーブルに保存
-INSERT OVERWRITE TABLE silver_ra_definitions_summary
+INSERT OVERWRITE TABLE reprod_paper08.silver.ra_definitions_summary
 SELECT
     'def_0' AS definition,
     (SELECT COUNT(*) FROM ra_patients_def0) AS n_patients,
-    (SELECT COUNT(*) FROM ra_patients_def0) * 100.0 / (SELECT COUNT(*) FROM bronze_patients) AS prevalence_pct
+    (SELECT COUNT(*) FROM ra_patients_def0) * 100.0 / (SELECT COUNT(*) FROM reprod_paper08.bronze.patients) AS prevalence_pct
 UNION ALL
 SELECT
     'def_2',
     (SELECT COUNT(*) FROM ra_patients_def2),
-    (SELECT COUNT(*) FROM ra_patients_def2) * 100.0 / (SELECT COUNT(*) FROM bronze_patients)
+    (SELECT COUNT(*) FROM ra_patients_def2) * 100.0 / (SELECT COUNT(*) FROM reprod_paper08.bronze.patients)
 UNION ALL
 SELECT
     'def_3',
     (SELECT COUNT(*) FROM ra_patients_def3),
-    (SELECT COUNT(*) FROM ra_patients_def3) * 100.0 / (SELECT COUNT(*) FROM bronze_patients)
+    (SELECT COUNT(*) FROM ra_patients_def3) * 100.0 / (SELECT COUNT(*) FROM reprod_paper08.bronze.patients)
 UNION ALL
 SELECT
     'def_4',
     (SELECT COUNT(*) FROM ra_patients_def4),
-    (SELECT COUNT(*) FROM ra_patients_def4) * 100.0 / (SELECT COUNT(*) FROM bronze_patients);
+    (SELECT COUNT(*) FROM ra_patients_def4) * 100.0 / (SELECT COUNT(*) FROM reprod_paper08.bronze.patients);
 
 -- サマリーを表示
-SELECT * FROM silver_ra_definitions_summary ORDER BY definition;
+SELECT * FROM reprod_paper08.silver.ra_definitions_summary ORDER BY definition;
 
 -- COMMAND ----------
 
@@ -404,8 +404,8 @@ SELECT
     COUNT(*) AS total_ra_patients,
     SUM(CASE WHEN sex = '2' THEN 1 ELSE 0 END) AS female_count,
     ROUND(SUM(CASE WHEN sex = '2' THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 1) AS female_pct,
-    ROUND(COUNT(*) * 100.0 / (SELECT COUNT(*) FROM bronze_patients), 2) AS prevalence_pct
-FROM silver_ra_patients_def3;
+    ROUND(COUNT(*) * 100.0 / (SELECT COUNT(*) FROM reprod_paper08.bronze.patients), 2) AS prevalence_pct
+FROM reprod_paper08.silver.ra_patients_def3;
 
 -- COMMAND ----------
 
@@ -414,7 +414,7 @@ SELECT
     age_group,
     COUNT(*) AS count,
     ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (), 1) AS pct
-FROM silver_ra_patients_def3
+FROM reprod_paper08.silver.ra_patients_def3
 GROUP BY age_group
 ORDER BY
     CASE age_group
@@ -431,7 +431,7 @@ SELECT
     ROUND(SUM(CASE WHEN age >= 65 THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 1) AS elderly_65_pct,
     SUM(CASE WHEN age >= 85 THEN 1 ELSE 0 END) AS elderly_85_count,
     ROUND(SUM(CASE WHEN age >= 85 THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 1) AS elderly_85_pct
-FROM silver_ra_patients_def3;
+FROM reprod_paper08.silver.ra_patients_def3;
 
 -- COMMAND ----------
 
@@ -449,7 +449,7 @@ SELECT
     ROUND(AVG(JAKi) * 100, 1) AS JAKi_pct,
     ROUND(AVG(CS) * 100, 1) AS CS_pct,
     ROUND(AVG(bDMARDs) * 100, 1) AS bDMARDs_pct
-FROM silver_ra_patients_def3;
+FROM reprod_paper08.silver.ra_patients_def3;
 
 -- COMMAND ----------
 
@@ -461,7 +461,7 @@ SELECT
     ROUND(AVG(ULTRASOUND) * 100, 2) AS ULTRASOUND_pct,
     ROUND(AVG(BMD) * 100, 2) AS BMD_pct,
     ROUND(AVG(any_RA_surgery) * 100, 2) AS any_RA_surgery_pct
-FROM silver_ra_patients_def3;
+FROM reprod_paper08.silver.ra_patients_def3;
 
 -- COMMAND ----------
 
@@ -476,9 +476,18 @@ SELECT '==============================================';
 -- MAGIC
 -- MAGIC Silver層のデータ変換が完了しました。
 -- MAGIC
--- MAGIC ### 作成されたデータ
--- MAGIC 1. ✅ silver_ra_patients_def3 - RA患者マスタ（~650件）
--- MAGIC 2. ✅ silver_ra_definitions_summary - 定義別サマリー（4件）
+-- MAGIC ### 作成されたデータ（Unity Catalog）
+-- MAGIC 1. ✅ `reprod_paper08.silver.ra_patients_def3` - RA患者マスタ（~650件）
+-- MAGIC 2. ✅ `reprod_paper08.silver.ra_definitions_summary` - 定義別サマリー（4件）
+-- MAGIC
+-- MAGIC ### 検証クエリ
+-- MAGIC ```sql
+-- MAGIC -- 患者数確認
+-- MAGIC SELECT COUNT(*) FROM reprod_paper08.silver.ra_patients_def3;  -- ~650
+-- MAGIC
+-- MAGIC -- 定義別サマリー確認
+-- MAGIC SELECT * FROM reprod_paper08.silver.ra_definitions_summary ORDER BY definition;
+-- MAGIC ```
 -- MAGIC
 -- MAGIC ### 主要な結果
 -- MAGIC - **有病率**: 約0.65%

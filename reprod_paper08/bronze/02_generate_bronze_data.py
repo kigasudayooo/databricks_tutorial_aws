@@ -1,6 +1,6 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # Bronze Layer: データ生成（PySpark）
+# MAGIC # Bronze Layer: データ生成（PySpark） - Unity Catalog対応
 # MAGIC
 # MAGIC このノートブックでは、NDBレセプトデータを模したダミーデータを生成し、Bronze層テーブルに保存します。
 # MAGIC
@@ -8,12 +8,12 @@
 # MAGIC
 # MAGIC | テーブル | レコード数 | 内容 |
 # MAGIC |---------|----------|------|
-# MAGIC | bronze_patients | 10,000 | 患者マスタ |
-# MAGIC | bronze_re_receipt | ~25,000 | レセプト基本情報 |
-# MAGIC | bronze_sy_disease | ~63,000 | 傷病名（ICD-10） |
-# MAGIC | bronze_iy_medication | ~1,300 | 医薬品処方 |
-# MAGIC | bronze_si_procedure | ~25,500 | 診療行為 |
-# MAGIC | bronze_ho_insurer | ~10,000 | 保険者情報 |
+# MAGIC | reprod_paper08.bronze.patients | 10,000 | 患者マスタ |
+# MAGIC | reprod_paper08.bronze.re_receipt | ~25,000 | レセプト基本情報 |
+# MAGIC | reprod_paper08.bronze.sy_disease | ~63,000 | 傷病名（ICD-10） |
+# MAGIC | reprod_paper08.bronze.iy_medication | ~1,300 | 医薬品処方 |
+# MAGIC | reprod_paper08.bronze.si_procedure | ~25,500 | 診療行為 |
+# MAGIC | reprod_paper08.bronze.ho_insurer | ~10,000 | 保険者情報 |
 # MAGIC
 # MAGIC ## 技術的なポイント
 # MAGIC - **pandas → PySpark変換**: 確率的データ生成ロジックをPySparkで実装
@@ -651,43 +651,40 @@ print("\n" + "=" * 60)
 print("Bronzeテーブルへデータを書き込み中...")
 print("=" * 60)
 
-# データベースを使用
-spark.sql("USE reprod_paper08")
-
-# 1. bronze_patients
-print("\n[1/6] bronze_patients に書き込み中...")
-df_patients.write.format("delta").mode("overwrite").saveAsTable("bronze_patients")
-count = spark.table("bronze_patients").count()
+# 1. reprod_paper08.bronze.patients
+print("\n[1/6] reprod_paper08.bronze.patients に書き込み中...")
+df_patients.write.format("delta").mode("overwrite").saveAsTable("reprod_paper08.bronze.patients")
+count = spark.table("reprod_paper08.bronze.patients").count()
 print(f"  ✅ 完了: {count:,}件")
 
-# 2. bronze_re_receipt
-print("\n[2/6] bronze_re_receipt に書き込み中...")
-df_receipts_final.write.format("delta").mode("overwrite").saveAsTable("bronze_re_receipt")
-count = spark.table("bronze_re_receipt").count()
+# 2. reprod_paper08.bronze.re_receipt
+print("\n[2/6] reprod_paper08.bronze.re_receipt に書き込み中...")
+df_receipts_final.write.format("delta").mode("overwrite").saveAsTable("reprod_paper08.bronze.re_receipt")
+count = spark.table("reprod_paper08.bronze.re_receipt").count()
 print(f"  ✅ 完了: {count:,}件")
 
-# 3. bronze_sy_disease
-print("\n[3/6] bronze_sy_disease に書き込み中...")
-df_diseases_final.write.format("delta").mode("overwrite").saveAsTable("bronze_sy_disease")
-count = spark.table("bronze_sy_disease").count()
+# 3. reprod_paper08.bronze.sy_disease
+print("\n[3/6] reprod_paper08.bronze.sy_disease に書き込み中...")
+df_diseases_final.write.format("delta").mode("overwrite").saveAsTable("reprod_paper08.bronze.sy_disease")
+count = spark.table("reprod_paper08.bronze.sy_disease").count()
 print(f"  ✅ 完了: {count:,}件")
 
-# 4. bronze_iy_medication
-print("\n[4/6] bronze_iy_medication に書き込み中...")
-df_medications_final.write.format("delta").mode("overwrite").saveAsTable("bronze_iy_medication")
-count = spark.table("bronze_iy_medication").count()
+# 4. reprod_paper08.bronze.iy_medication
+print("\n[4/6] reprod_paper08.bronze.iy_medication に書き込み中...")
+df_medications_final.write.format("delta").mode("overwrite").saveAsTable("reprod_paper08.bronze.iy_medication")
+count = spark.table("reprod_paper08.bronze.iy_medication").count()
 print(f"  ✅ 完了: {count:,}件")
 
-# 5. bronze_si_procedure
-print("\n[5/6] bronze_si_procedure に書き込み中...")
-df_procedures_final.write.format("delta").mode("overwrite").saveAsTable("bronze_si_procedure")
-count = spark.table("bronze_si_procedure").count()
+# 5. reprod_paper08.bronze.si_procedure
+print("\n[5/6] reprod_paper08.bronze.si_procedure に書き込み中...")
+df_procedures_final.write.format("delta").mode("overwrite").saveAsTable("reprod_paper08.bronze.si_procedure")
+count = spark.table("reprod_paper08.bronze.si_procedure").count()
 print(f"  ✅ 完了: {count:,}件")
 
-# 6. bronze_ho_insurer
-print("\n[6/6] bronze_ho_insurer に書き込み中...")
-df_insurer.write.format("delta").mode("overwrite").saveAsTable("bronze_ho_insurer")
-count = spark.table("bronze_ho_insurer").count()
+# 6. reprod_paper08.bronze.ho_insurer
+print("\n[6/6] reprod_paper08.bronze.ho_insurer に書き込み中...")
+df_insurer.write.format("delta").mode("overwrite").saveAsTable("reprod_paper08.bronze.ho_insurer")
+count = spark.table("reprod_paper08.bronze.ho_insurer").count()
 print(f"  ✅ 完了: {count:,}件")
 
 print("\n" + "=" * 60)
@@ -707,7 +704,7 @@ print("=" * 60)
 
 # 患者マスタ
 print("\n【患者マスタ】")
-df_patients_check = spark.table("bronze_patients")
+df_patients_check = spark.table("reprod_paper08.bronze.patients")
 print(f"総患者数: {df_patients_check.count():,}")
 print(f"RA候補患者数: {df_patients_check.filter('is_ra_candidate = true').count():,}")
 print(f"年齢範囲: {df_patients_check.agg(F.min('age'), F.max('age')).first()}")
@@ -722,7 +719,7 @@ df_patients_check.filter("is_ra_candidate = true") \
 
 # レセプト
 print("\n【レセプト基本情報】")
-df_receipt_check = spark.table("bronze_re_receipt")
+df_receipt_check = spark.table("reprod_paper08.bronze.re_receipt")
 print(f"総レセプト数: {df_receipt_check.count():,}")
 print(f"診療年月の範囲:")
 df_receipt_check.agg(F.min("診療年月"), F.max("診療年月")).show()
@@ -730,18 +727,18 @@ df_receipt_check.agg(F.min("診療年月"), F.max("診療年月")).show()
 # 傷病名
 print("\n【傷病名（RA関連コード）】")
 ra_codes_str = ", ".join([f"'{code}'" for code in RA_ICD10_CODES])
-df_disease_check = spark.table("bronze_sy_disease")
+df_disease_check = spark.table("reprod_paper08.bronze.sy_disease")
 ra_disease_count = df_disease_check.filter(f"ICD10コード IN ({ra_codes_str})").count()
 print(f"RA関連ICD-10レコード数: {ra_disease_count:,}")
 print(f"総傷病名レコード数: {df_disease_check.count():,}")
 
 # 医薬品
 print("\n【医薬品（カテゴリ別）】")
-spark.table("bronze_iy_medication").groupBy("drug_category").count().orderBy("drug_category").show()
+spark.table("reprod_paper08.bronze.iy_medication").groupBy("drug_category").count().orderBy("drug_category").show()
 
 # 診療行為
 print("\n【診療行為（タイプ別）】")
-spark.table("bronze_si_procedure").groupBy("procedure_type").count().orderBy("procedure_type").show()
+spark.table("reprod_paper08.bronze.si_procedure").groupBy("procedure_type").count().orderBy("procedure_type").show()
 
 print("\n" + "=" * 60)
 print("✅ Bronze層データ生成が完全に完了しました！")

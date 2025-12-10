@@ -1,6 +1,6 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # Gold Layer: 分析と可視化（PySpark）
+# MAGIC # Gold Layer: 分析と可視化（PySpark） - Unity Catalog対応
 # MAGIC
 # MAGIC このノートブックでは、Silver層データを用いて論文の主要結果を再現します。
 # MAGIC
@@ -37,9 +37,6 @@ import matplotlib.pyplot as plt
 import matplotlib
 matplotlib.rcParams['font.size'] = 10
 
-# データベースを使用
-spark.sql("USE reprod_paper08")
-
 print("=" * 60)
 print("Gold Layer 分析を開始します")
 print("=" * 60)
@@ -52,9 +49,9 @@ print("=" * 60)
 # COMMAND ----------
 
 # Silver層データを読み込み
-df_ra = spark.table("silver_ra_patients_def3")
-df_all_patients = spark.table("bronze_patients")
-df_definitions = spark.table("silver_ra_definitions_summary")
+df_ra = spark.table("reprod_paper08.silver.ra_patients_def3")
+df_all_patients = spark.table("reprod_paper08.bronze.patients")
+df_definitions = spark.table("reprod_paper08.silver.ra_definitions_summary")
 
 # 基本統計
 total_ra = df_ra.count()
@@ -160,7 +157,7 @@ df_table2_final = df_table2_final.orderBy(
 
 # Goldテーブルに保存
 df_table2_final.write.format("delta").mode("overwrite") \
-    .saveAsTable("gold_table2_age_distribution")
+    .saveAsTable("reprod_paper08.gold.table2_age_distribution")
 
 print("✅ Table 2生成完了")
 
@@ -239,7 +236,7 @@ df_table3_final = df_table3_final.orderBy(
 
 # Goldテーブルに保存
 df_table3_final.write.format("delta").mode("overwrite") \
-    .saveAsTable("gold_table3_medication")
+    .saveAsTable("reprod_paper08.gold.table3_medication")
 
 print("✅ Table 3生成完了")
 
@@ -299,7 +296,7 @@ df_table4_final = df_table4_final.orderBy(
 
 # Goldテーブルに保存
 df_table4_final.write.format("delta").mode("overwrite") \
-    .saveAsTable("gold_table4_procedures")
+    .saveAsTable("reprod_paper08.gold.table4_procedures")
 
 print("✅ Table 4生成完了")
 
@@ -350,7 +347,7 @@ df_summary = spark.createDataFrame(
 )
 
 # Goldテーブルに保存
-df_summary.write.format("delta").mode("overwrite").saveAsTable("gold_summary")
+df_summary.write.format("delta").mode("overwrite").saveAsTable("reprod_paper08.gold.summary")
 
 print("✅ サマリー生成完了")
 
@@ -376,7 +373,7 @@ display(df_summary)
 print("\n【可視化1】 年齢層別RA患者分布")
 
 # Table 2からTotal行を除外して可視化
-df_viz_age = spark.table("gold_table2_age_distribution").filter("age_group != 'Total'")
+df_viz_age = spark.table("reprod_paper08.gold.table2_age_distribution").filter("age_group != 'Total'")
 display(df_viz_age.select("age_group", "n", "prevalence"))
 
 # COMMAND ----------
@@ -389,7 +386,7 @@ display(df_viz_age.select("age_group", "n", "prevalence"))
 print("\n【可視化2】 MTX使用率（再現 vs 論文）")
 
 # Table 3からMTX列を抽出（Total行を除く）
-df_viz_mtx = spark.table("gold_table3_medication") \
+df_viz_mtx = spark.table("reprod_paper08.gold.table3_medication") \
     .filter("age_group != 'Total'") \
     .select("age_group", "MTX")
 
@@ -424,7 +421,7 @@ display(df_viz_mtx)
 print("\n【可視化3】 bDMARDs使用率（再現 vs 論文）")
 
 # Table 3からbDMARDs列を抽出（Total行を除く）
-df_viz_bdmard = spark.table("gold_table3_medication") \
+df_viz_bdmard = spark.table("reprod_paper08.gold.table3_medication") \
     .filter("age_group != 'Total'") \
     .select("age_group", "bDMARDs")
 
@@ -459,7 +456,7 @@ display(df_viz_bdmard)
 print("\n【可視化4】 TNFI/ABT使用比率の年齢変化")
 
 # Table 3からTNFI/ABT比率を抽出（Total行を除く）
-df_viz_tnfi_abt = spark.table("gold_table3_medication") \
+df_viz_tnfi_abt = spark.table("reprod_paper08.gold.table3_medication") \
     .filter("age_group != 'Total'") \
     .select("age_group", "TNFI_ABT_ratio") \
     .orderBy(
@@ -484,11 +481,11 @@ display(df_viz_tnfi_abt)
 # COMMAND ----------
 
 # pandas DataFrameに変換（小規模データなので可能）
-pdf_table2 = spark.table("gold_table2_age_distribution") \
+pdf_table2 = spark.table("reprod_paper08.gold.table2_age_distribution") \
     .filter("age_group != 'Total'") \
     .toPandas()
 
-pdf_table3 = spark.table("gold_table3_medication") \
+pdf_table3 = spark.table("reprod_paper08.gold.table3_medication") \
     .filter("age_group != 'Total'") \
     .toPandas()
 
