@@ -1,0 +1,571 @@
+{
+  "datasets": [
+    {
+      "name": "4a9809af",
+      "displayName": "base",
+      "queryLines": [
+        "-- Base Query: patient_dashboard_base\n",
+        "-- このクエリを保存して、複数のVisualizationとフィルターを作成\n",
+        "\n",
+        "SELECT \n",
+        "  patient_id,\n",
+        "  sex,\n",
+        "  age,\n",
+        "  age_group,\n",
+        "  prefecture_code,\n",
+        "  CASE prefecture_code\n",
+        "    WHEN '01' THEN 'Hokkaido'\n",
+        "    WHEN '11' THEN 'Saitama'\n",
+        "    WHEN '12' THEN 'Chiba'\n",
+        "    WHEN '13' THEN 'Tokyo'\n",
+        "    WHEN '14' THEN 'Kanagawa'\n",
+        "    WHEN '22' THEN 'Shizuoka'\n",
+        "    WHEN '23' THEN 'Aichi'\n",
+        "    WHEN '27' THEN 'Osaka'\n",
+        "    WHEN '28' THEN 'Hyogo'\n",
+        "    WHEN '40' THEN 'Fukuoka'\n",
+        "    ELSE 'Other'\n",
+        "  END AS prefecture_name,\n",
+        "  YEAR(diabetes_diagnosis_date) AS diagnosis_year,\n",
+        "  diabetes_diagnosis_date,\n",
+        "  has_hypertension,\n",
+        "  has_dyslipidemia,\n",
+        "  has_ckd,\n",
+        "  comorbidity_pattern,\n",
+        "  cv_event_occurred,\n",
+        "  follow_up_months,\n",
+        "  hba1c,\n",
+        "  bmi\n",
+        "FROM ndb_poc.default.diabetes_cohort\n",
+        "WHERE prefecture_code IS NOT NULL"
+      ]
+    }
+  ],
+  "pages": [
+    {
+      "name": "7c11a764",
+      "displayName": "Untitled page",
+      "layout": [
+        {
+          "widget": {
+            "name": "8e23eb99",
+            "queries": [
+              {
+                "name": "dashboards/01f0d45212ec179f952c08341889bf25/datasets/01f0d4543c071a69b85309c976b632fd_sex",
+                "query": {
+                  "datasetName": "4a9809af",
+                  "fields": [
+                    {
+                      "name": "sex",
+                      "expression": "`sex`"
+                    },
+                    {
+                      "name": "sex_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "filter-single-select",
+              "encodings": {
+                "fields": [
+                  {
+                    "fieldName": "sex",
+                    "queryName": "dashboards/01f0d45212ec179f952c08341889bf25/datasets/01f0d4543c071a69b85309c976b632fd_sex"
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true
+              }
+            }
+          },
+          "position": {
+            "x": 1,
+            "y": 0,
+            "width": 1,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "b8bbff25",
+            "queries": [
+              {
+                "name": "dashboards/01f0d45212ec179f952c08341889bf25/datasets/01f0d4543c071a69b85309c976b632fd_age_group",
+                "query": {
+                  "datasetName": "4a9809af",
+                  "fields": [
+                    {
+                      "name": "age_group",
+                      "expression": "`age_group`"
+                    },
+                    {
+                      "name": "age_group_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "filter-multi-select",
+              "encodings": {
+                "fields": [
+                  {
+                    "fieldName": "age_group",
+                    "queryName": "dashboards/01f0d45212ec179f952c08341889bf25/datasets/01f0d4543c071a69b85309c976b632fd_age_group"
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true
+              }
+            }
+          },
+          "position": {
+            "x": 2,
+            "y": 0,
+            "width": 1,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "1c73e48d",
+            "queries": [
+              {
+                "name": "dashboards/01f0d45212ec179f952c08341889bf25/datasets/01f0d4543c071a69b85309c976b632fd_prefecture_name",
+                "query": {
+                  "datasetName": "4a9809af",
+                  "fields": [
+                    {
+                      "name": "prefecture_name",
+                      "expression": "`prefecture_name`"
+                    },
+                    {
+                      "name": "prefecture_name_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "filter-multi-select",
+              "encodings": {
+                "fields": [
+                  {
+                    "fieldName": "prefecture_name",
+                    "queryName": "dashboards/01f0d45212ec179f952c08341889bf25/datasets/01f0d4543c071a69b85309c976b632fd_prefecture_name"
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 0,
+            "width": 1,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "67f2d4d2",
+            "queries": [
+              {
+                "name": "dashboards/01f0d45212ec179f952c08341889bf25/datasets/01f0d4543c071a69b85309c976b632fd_comorbidity_pattern",
+                "query": {
+                  "datasetName": "4a9809af",
+                  "fields": [
+                    {
+                      "name": "comorbidity_pattern",
+                      "expression": "`comorbidity_pattern`"
+                    },
+                    {
+                      "name": "comorbidity_pattern_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "filter-multi-select",
+              "encodings": {
+                "fields": [
+                  {
+                    "fieldName": "comorbidity_pattern",
+                    "queryName": "dashboards/01f0d45212ec179f952c08341889bf25/datasets/01f0d4543c071a69b85309c976b632fd_comorbidity_pattern"
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true
+              }
+            }
+          },
+          "position": {
+            "x": 4,
+            "y": 0,
+            "width": 1,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "5c0ac32a",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "4a9809af",
+                  "fields": [
+                    {
+                      "name": "sex",
+                      "expression": "`sex`"
+                    },
+                    {
+                      "name": "count(*)",
+                      "expression": "COUNT(`*`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "sex",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                },
+                "y": {
+                  "fieldName": "count(*)",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 2,
+            "width": 3,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "5ea29bc7",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "4a9809af",
+                  "fields": [
+                    {
+                      "name": "age_group",
+                      "expression": "`age_group`"
+                    },
+                    {
+                      "name": "count(*)",
+                      "expression": "COUNT(`*`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "age_group",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                },
+                "y": {
+                  "fieldName": "count(*)",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                }
+              },
+              "mark": {
+                "colors": [
+                  {
+                    "themeColorType": "visualizationColors",
+                    "position": 4
+                  },
+                  {
+                    "themeColorType": "visualizationColors",
+                    "position": 2
+                  },
+                  {
+                    "themeColorType": "visualizationColors",
+                    "position": 3
+                  },
+                  {
+                    "themeColorType": "visualizationColors",
+                    "position": 4
+                  },
+                  {
+                    "themeColorType": "visualizationColors",
+                    "position": 5
+                  },
+                  {
+                    "themeColorType": "visualizationColors",
+                    "position": 6
+                  },
+                  {
+                    "themeColorType": "visualizationColors",
+                    "position": 7
+                  },
+                  {
+                    "themeColorType": "visualizationColors",
+                    "position": 8
+                  },
+                  {
+                    "themeColorType": "visualizationColors",
+                    "position": 9
+                  },
+                  {
+                    "themeColorType": "visualizationColors",
+                    "position": 10
+                  }
+                ]
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 2,
+            "width": 3,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "c300857f",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "4a9809af",
+                  "fields": [
+                    {
+                      "name": "diagnosis_year",
+                      "expression": "`diagnosis_year`"
+                    },
+                    {
+                      "name": "count(*)",
+                      "expression": "COUNT(`*`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "line",
+              "encodings": {
+                "x": {
+                  "fieldName": "diagnosis_year",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                },
+                "y": {
+                  "fieldName": "count(*)",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 8,
+            "width": 3,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "795806d1",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "4a9809af",
+                  "fields": [
+                    {
+                      "name": "comorbidity_pattern",
+                      "expression": "`comorbidity_pattern`"
+                    },
+                    {
+                      "name": "count(*)",
+                      "expression": "COUNT(`*`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "comorbidity_pattern",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                },
+                "y": {
+                  "fieldName": "count(*)",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 8,
+            "width": 3,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "55902665",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "4a9809af",
+                  "fields": [
+                    {
+                      "name": "bin(hba1c, binWidth=0_5)",
+                      "expression": "BIN_FLOOR(`hba1c`, 0.5)"
+                    },
+                    {
+                      "name": "count(*)",
+                      "expression": "COUNT(`*`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "histogram",
+              "encodings": {
+                "x": {
+                  "fieldName": "bin(hba1c, binWidth=0_5)",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "y": {
+                  "fieldName": "count(*)",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 14,
+            "width": 3,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "eb5628be",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "4a9809af",
+                  "fields": [
+                    {
+                      "name": "bin(bmi, binWidth=2)",
+                      "expression": "BIN_FLOOR(`bmi`, 2)"
+                    },
+                    {
+                      "name": "count(*)",
+                      "expression": "COUNT(`*`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "histogram",
+              "encodings": {
+                "x": {
+                  "fieldName": "bin(bmi, binWidth=2)",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "y": {
+                  "fieldName": "count(*)",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 14,
+            "width": 3,
+            "height": 6
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS"
+    }
+  ],
+  "uiSettings": {
+    "theme": {
+      "widgetHeaderAlignment": "ALIGNMENT_UNSPECIFIED"
+    },
+    "applyModeEnabled": false
+  }
+}
