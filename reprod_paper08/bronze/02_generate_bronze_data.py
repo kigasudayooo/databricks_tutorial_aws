@@ -1,0 +1,768 @@
+# Databricks notebook source
+# MAGIC %md
+# MAGIC # Bronze Layer: データ生成（PySpark）
+# MAGIC
+# MAGIC このノートブックでは、NDBレセプトデータを模したダミーデータを生成し、Bronze層テーブルに保存します。
+# MAGIC
+# MAGIC ## 生成されるデータ
+# MAGIC
+# MAGIC | テーブル | レコード数 | 内容 |
+# MAGIC |---------|----------|------|
+# MAGIC | bronze_patients | 10,000 | 患者マスタ |
+# MAGIC | bronze_re_receipt | ~25,000 | レセプト基本情報 |
+# MAGIC | bronze_sy_disease | ~63,000 | 傷病名（ICD-10） |
+# MAGIC | bronze_iy_medication | ~1,300 | 医薬品処方 |
+# MAGIC | bronze_si_procedure | ~25,500 | 診療行為 |
+# MAGIC | bronze_ho_insurer | ~10,000 | 保険者情報 |
+# MAGIC
+# MAGIC ## 技術的なポイント
+# MAGIC - **pandas → PySpark変換**: 確率的データ生成ロジックをPySparkで実装
+# MAGIC - **年齢層別分布**: 論文Table 2の分布を再現
+# MAGIC - **年齢依存の薬剤使用率**: 高齢者ではMTX減少、若年者ではbDMARDs増加
+# MAGIC - **ハッシュキー**: SHA-256ハッシュで匿名化
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 1. 設定とインポート
+
+# COMMAND ----------
+
+# MAGIC %run ../config/constants
+
+# COMMAND ----------
+
+from pyspark.sql import functions as F
+from pyspark.sql.types import *
+from pyspark.sql.window import Window
+from datetime import datetime, timedelta
+import random
+
+# パフォーマンス最適化: 小規模データなので shuffle partitions を減らす
+spark.conf.set("spark.sql.shuffle.partitions", "8")
+
+print("=" * 60)
+print("Bronze Layer データ生成を開始します")
+print("=" * 60)
+print(f"総患者数: {N_TOTAL_PATIENTS:,}")
+print(f"RA候補患者: {int(N_TOTAL_PATIENTS * RA_CANDIDATE_RATIO):,}")
+print(f"目標RA有病率: {RA_PREVALENCE:.2%}")
+print("=" * 60)
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 2. ヘルパー関数の定義
+
+# COMMAND ----------
+
+def create_age_group_cdf():
+    """
+    年齢群分布の累積分布関数（CDF）を作成
+
+    Returns:
+    --------
+    list of tuple: [(age_group, cumulative_prob), ...]
+    """
+    # 正規化（合計が1になるように調整）
+    total = sum(AGE_GROUP_RA_DISTRIBUTION.values())
+    normalized = {k: v / total for k, v in AGE_GROUP_RA_DISTRIBUTION.items()}
+
+    # CDFを構築
+    cdf = []
+    cumsum = 0.0
+    for age_group in ["16-19", "20-29", "30-39", "40-49", "50-59",
+                      "60-69", "70-79", "80-84", "85+"]:
+        cumsum += normalized[age_group]
+        cdf.append((age_group, cumsum))
+
+    return cdf
+
+
+def get_age_range_for_group(age_group):
+    """
+    年齢群から年齢範囲を取得
+
+    Parameters:
+    -----------
+    age_group : str
+        年齢群（"16-19", ..., "85+"）
+
+    Returns:
+    --------
+    tuple: (min_age, max_age)
+    """
+    for group_name, min_age, max_age in AGE_GROUPS:
+        if group_name == age_group:
+            return (min_age, max_age)
+    return (16, 100)  # デフォルト
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 3. 患者マスタデータの生成
+
+# COMMAND ----------
+
+print("\n[1/6] 患者マスタを生成中...")
+
+# 患者数の内訳
+n_ra_candidates = int(N_TOTAL_PATIENTS * RA_CANDIDATE_RATIO)
+n_non_ra = N_TOTAL_PATIENTS - n_ra_candidates
+
+print(f"  - RA候補患者: {n_ra_candidates:,}")
+print(f"  - 非RA患者: {n_non_ra:,}")
+
+# 年齢群CDFを作成
+age_group_cdf = create_age_group_cdf()
+
+# RA候補患者の生成
+df_ra_candidates = spark.range(0, n_ra_candidates).toDF("patient_id")
+
+# 年齢群を確率的に割り当て（CDFを使用）
+age_group_when = None
+for i, (age_group, cum_prob) in enumerate(age_group_cdf):
+    rand_col = F.rand(seed=42 + i)  # seedを少しずらす
+    if age_group_when is None:
+        age_group_when = F.when(rand_col < cum_prob, F.lit(age_group))
+    else:
+        prev_cum_prob = age_group_cdf[i-1][1] if i > 0 else 0.0
+        age_group_when = age_group_when.when(
+            (rand_col >= prev_cum_prob) & (rand_col < cum_prob),
+            F.lit(age_group)
+        )
+
+df_ra_candidates = df_ra_candidates.withColumn("age_group_temp", age_group_when)
+
+# 年齢群内で年齢をランダムに割り当て
+# 各年齢群の範囲を辞書化
+age_ranges = {group: (min_age, max_age) for group, min_age, max_age in AGE_GROUPS}
+
+# 年齢群ごとに年齢を割り当て
+age_when = None
+for age_group, (min_age, max_age) in age_ranges.items():
+    age_val = F.round(F.rand(seed=100) * (max_age - min_age) + min_age).cast("int")
+    if age_when is None:
+        age_when = F.when(F.col("age_group_temp") == age_group, age_val)
+    else:
+        age_when = age_when.when(F.col("age_group_temp") == age_group, age_val)
+
+df_ra_candidates = df_ra_candidates \
+    .withColumn("age", age_when) \
+    .withColumn("age_group", F.col("age_group_temp")) \
+    .drop("age_group_temp")
+
+# 性別（女性が76.3%）
+df_ra_candidates = df_ra_candidates.withColumn(
+    "sex",
+    F.when(F.rand(seed=200) < RA_FEMALE_RATIO, F.lit("2")).otherwise(F.lit("1"))
+)
+
+# RA候補フラグ
+df_ra_candidates = df_ra_candidates.withColumn("is_ra_candidate", F.lit(True))
+
+# 非RA患者の生成
+df_non_ra = spark.range(n_ra_candidates, N_TOTAL_PATIENTS).toDF("patient_id")
+
+# 年齢: 16-90歳でランダム
+df_non_ra = df_non_ra.withColumn(
+    "age",
+    F.round(F.rand(seed=300) * 74 + 16).cast("int")  # 16 + [0, 74] = [16, 90]
+)
+
+# 年齢群を割り当て
+age_group_when_general = F.when((F.col("age") >= 16) & (F.col("age") <= 19), "16-19") \
+    .when((F.col("age") >= 20) & (F.col("age") <= 29), "20-29") \
+    .when((F.col("age") >= 30) & (F.col("age") <= 39), "30-39") \
+    .when((F.col("age") >= 40) & (F.col("age") <= 49), "40-49") \
+    .when((F.col("age") >= 50) & (F.col("age") <= 59), "50-59") \
+    .when((F.col("age") >= 60) & (F.col("age") <= 69), "60-69") \
+    .when((F.col("age") >= 70) & (F.col("age") <= 79), "70-79") \
+    .when((F.col("age") >= 80) & (F.col("age") <= 84), "80-84") \
+    .otherwise("85+")
+
+df_non_ra = df_non_ra.withColumn("age_group", age_group_when_general)
+
+# 性別（一般人口: 女性51%）
+df_non_ra = df_non_ra.withColumn(
+    "sex",
+    F.when(F.rand(seed=400) < GENERAL_FEMALE_RATIO, F.lit("2")).otherwise(F.lit("1"))
+)
+
+# 非RA候補フラグ
+df_non_ra = df_non_ra.withColumn("is_ra_candidate", F.lit(False))
+
+# RA候補患者と非RA患者を結合
+df_patients = df_ra_candidates.union(df_non_ra)
+
+# 共通キー（ハッシュキー）を生成
+df_patients = df_patients.withColumn(
+    "共通キー",
+    F.substring(F.sha2(F.concat(F.lit("patient_"), F.col("patient_id")), 256), 1, 32)
+)
+
+# 生年月日を生成（年齢から逆算）
+# 基準日: 2017-10-01
+reference_date = datetime.strptime(REFERENCE_DATE, "%Y-%m-%d")
+
+df_patients = df_patients.withColumn(
+    "birth_year",
+    F.lit(reference_date.year) - F.col("age")
+).withColumn(
+    "birth_month",
+    F.round(F.rand(seed=500) * 11 + 1).cast("int")  # 1-12月
+).withColumn(
+    "birth_day",
+    F.round(F.rand(seed=600) * 27 + 1).cast("int")  # 1-28日（簡略化）
+).withColumn(
+    "birth_date",
+    F.concat(
+        F.col("birth_year").cast("string"),
+        F.lit("-"),
+        F.lpad(F.col("birth_month").cast("string"), 2, "0"),
+        F.lit("-"),
+        F.lpad(F.col("birth_day").cast("string"), 2, "0")
+    )
+).drop("birth_year", "birth_month", "birth_day")
+
+# カラム順序を整理
+df_patients = df_patients.select(
+    "patient_id", "共通キー", "age", "age_group", "sex", "birth_date", "is_ra_candidate"
+)
+
+# 件数確認
+patient_count = df_patients.count()
+ra_candidate_count = df_patients.filter("is_ra_candidate = true").count()
+print(f"  ✅ 患者マスタ生成完了: {patient_count:,}件 (RA候補: {ra_candidate_count:,}件)")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 4. レセプト基本情報（RE）の生成
+
+# COMMAND ----------
+
+print("\n[2/6] レセプト基本情報を生成中...")
+
+# 研究期間の月リストを生成（2017-04 ～ 2018-03）
+start_date = datetime.strptime(STUDY_PERIOD_START, "%Y-%m-%d")
+end_date = datetime.strptime(STUDY_PERIOD_END, "%Y-%m-%d")
+
+# 月リストを生成
+months_list = []
+current = start_date
+while current <= end_date:
+    months_list.append(current.strftime("%Y%m"))
+    # 次の月へ
+    if current.month == 12:
+        current = datetime(current.year + 1, 1, 1)
+    else:
+        current = datetime(current.year, current.month + 1, 1)
+
+# 月データフレーム
+df_months = spark.createDataFrame(
+    [(i, month) for i, month in enumerate(months_list)],
+    ["month_id", "診療年月"]
+)
+
+print(f"  研究期間: {len(months_list)}ヶ月 ({months_list[0]} ～ {months_list[-1]})")
+
+# 各患者について受診月を生成
+# RA候補患者: 2-12回受診
+# 非RA患者: 1-4回受診
+
+# 患者ごとの受診回数を決定
+df_patients_visits = df_patients.withColumn(
+    "n_visits",
+    F.when(
+        F.col("is_ra_candidate"),
+        F.round(F.rand(seed=700) * 10 + 2).cast("int")  # 2-12回
+    ).otherwise(
+        F.round(F.rand(seed=800) * 3 + 1).cast("int")  # 1-4回
+    )
+)
+
+# 各患者について受診月をランダムに選択（簡略化: 単純に月をランダム割り当て）
+# より正確には explode で n_visits 分の行を作成し、月を割り当てるが、
+# ここでは性能のためにクロス結合してサンプリング
+
+# 患者と月をクロス結合（小規模データなので可能）
+df_receipts_raw = df_patients_visits.crossJoin(df_months.select("診療年月"))
+
+# 各患者について、ランダムに n_visits 分の月を選択
+# Window関数を使って月ごとにランク付け
+window_patient_month = Window.partitionBy("patient_id").orderBy(F.rand(seed=900))
+
+df_receipts = df_receipts_raw \
+    .withColumn("visit_rank", F.row_number().over(window_patient_month)) \
+    .filter(F.col("visit_rank") <= F.col("n_visits")) \
+    .drop("visit_rank", "n_visits")
+
+# 検索番号を生成
+df_receipts = df_receipts.withColumn(
+    "検索番号",
+    F.concat(
+        F.lit("RCP"),
+        F.lpad(F.col("patient_id").cast("string"), 8, "0"),
+        F.col("診療年月")
+    )
+)
+
+# その他のカラムを追加
+df_receipts = df_receipts \
+    .withColumn("データ識別", F.lit("1")) \
+    .withColumn("男女区分", F.col("sex")) \
+    .withColumn("fy", F.lit(FY)) \
+    .withColumn("year", F.substring(F.col("診療年月"), 1, 4)) \
+    .withColumn("month", F.substring(F.col("診療年月"), 5, 2)) \
+    .withColumn(
+        "prefecture_number",
+        F.lpad(F.round(F.rand(seed=1000) * 46 + 1).cast("int").cast("string"), 2, "0")
+    )
+
+# カラム選択
+df_receipts_final = df_receipts.select(
+    "共通キー", "検索番号", "データ識別", "診療年月", "男女区分",
+    "birth_date", "fy", "year", "month", "prefecture_number"
+)
+
+receipt_count = df_receipts_final.count()
+print(f"  ✅ レセプト基本情報生成完了: {receipt_count:,}件")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 5. 傷病名（SY）の生成
+
+# COMMAND ----------
+
+print("\n[3/6] 傷病名（ICD-10）を生成中...")
+
+# 各レセプトについて、1-5個の傷病名を割り当て
+df_receipts_diseases = df_receipts_final.withColumn(
+    "n_diseases",
+    F.round(F.rand(seed=1100) * 4 + 1).cast("int")  # 1-5個
+)
+
+# レセプトを複製して複数の傷病名を持てるようにする
+# explode を使ってn_diseases分の行を作成
+df_diseases_expanded = df_receipts_diseases \
+    .withColumn("disease_seq", F.expr("sequence(1, n_diseases)")) \
+    .withColumn("disease_id", F.explode("disease_seq")) \
+    .drop("disease_seq", "n_diseases")
+
+# ICD-10コードを割り当て
+# RA候補患者の場合、最初の傷病名はRA関連コード
+# その他は非RA疾患コード
+
+# RA ICD-10コードをランダムに選択
+ra_icd_lit = F.array([F.lit(code) for code in RA_ICD10_CODES])
+non_ra_icd_lit = F.array([F.lit(code) for code in NON_RA_ICD10_CODES])
+
+df_diseases = df_diseases_expanded.withColumn(
+    "ICD10コード",
+    F.when(
+        F.col("is_ra_candidate") & (F.col("disease_id") == 1),
+        ra_icd_lit[F.round(F.rand(seed=1200) * (len(RA_ICD10_CODES) - 1)).cast("int")]
+    ).otherwise(
+        non_ra_icd_lit[F.round(F.rand(seed=1300) * (len(NON_RA_ICD10_CODES) - 1)).cast("int")]
+    )
+)
+
+# 必要なカラムのみ選択
+df_diseases_final = df_diseases.select(
+    "共通キー", "検索番号", "ICD10コード", "診療年月"
+)
+
+disease_count = df_diseases_final.count()
+print(f"  ✅ 傷病名生成完了: {disease_count:,}件")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 6. 医薬品情報（IY）の生成
+
+# COMMAND ----------
+
+print("\n[4/6] 医薬品情報を生成中...")
+
+# RA候補患者のレセプトのみに対して薬剤を割り当て
+df_ra_receipts = df_receipts_final.filter("is_ra_candidate = true")
+
+# 各薬剤の使用確率を患者の年齢に基づいて調整
+# MTX: 高齢者で減少
+# bDMARDs: 若年者で増加
+
+medications_list = []
+
+# MTX
+df_mtx = df_ra_receipts.withColumn(
+    "mtx_prob",
+    F.when(F.col("age") >= 85, F.lit(DRUG_USAGE_RATES["MTX"] * 0.6))
+     .when(F.col("age") >= 80, F.lit(DRUG_USAGE_RATES["MTX"] * 0.8))
+     .otherwise(F.lit(DRUG_USAGE_RATES["MTX"]))
+).filter(F.rand(seed=1400) < F.col("mtx_prob")) \
+ .withColumn("医薬品コード", F.lit("1199101")) \
+ .withColumn("drug_category", F.lit("csDMARD")) \
+ .withColumn("drug_name", F.lit("MTX")) \
+ .select("共通キー", "検索番号", "医薬品コード", "drug_category", "drug_name")
+
+medications_list.append(df_mtx)
+
+# SSZ
+df_ssz = df_ra_receipts \
+    .filter(F.rand(seed=1500) < F.lit(DRUG_USAGE_RATES["SSZ"])) \
+    .withColumn("医薬品コード", F.lit("1199201")) \
+    .withColumn("drug_category", F.lit("csDMARD")) \
+    .withColumn("drug_name", F.lit("SSZ")) \
+    .select("共通キー", "検索番号", "医薬品コード", "drug_category", "drug_name")
+
+medications_list.append(df_ssz)
+
+# BUC
+df_buc = df_ra_receipts \
+    .filter(F.rand(seed=1600) < F.lit(DRUG_USAGE_RATES["BUC"])) \
+    .withColumn("医薬品コード", F.lit("1199401")) \
+    .withColumn("drug_category", F.lit("csDMARD")) \
+    .withColumn("drug_name", F.lit("BUC")) \
+    .select("共通キー", "検索番号", "医薬品コード", "drug_category", "drug_name")
+
+medications_list.append(df_buc)
+
+# TAC
+df_tac = df_ra_receipts \
+    .filter(F.rand(seed=1700) < F.lit(DRUG_USAGE_RATES["TAC"])) \
+    .withColumn("医薬品コード", F.lit("1199301")) \
+    .withColumn("drug_category", F.lit("csDMARD")) \
+    .withColumn("drug_name", F.lit("TAC")) \
+    .select("共通キー", "検索番号", "医薬品コード", "drug_category", "drug_name")
+
+medications_list.append(df_tac)
+
+# bDMARDs（年齢依存）
+df_bdmard_candidates = df_ra_receipts.withColumn(
+    "bdmard_prob",
+    F.when(F.col("age") < 40, F.lit(BDMARD_TOTAL_RATE * 2.0))
+     .when(F.col("age") >= 85, F.lit(BDMARD_TOTAL_RATE * 0.6))
+     .otherwise(F.lit(BDMARD_TOTAL_RATE))
+).filter(F.rand(seed=1800) < F.col("bdmard_prob"))
+
+# bDMARDsのタイプを決定（年齢依存）
+# 高齢者: ABT が増える
+# 若年者: TNFI が多い
+df_bdmard_candidates = df_bdmard_candidates.withColumn(
+    "bdmard_type_rand",
+    F.rand(seed=1900)
+).withColumn(
+    "bdmard_type",
+    F.when(
+        F.col("age") >= 70,
+        F.when(F.col("bdmard_type_rand") < 0.5, F.lit("TNFI"))
+         .when(F.col("bdmard_type_rand") < 0.75, F.lit("IL6I"))
+         .otherwise(F.lit("ABT"))
+    ).otherwise(
+        F.when(F.col("bdmard_type_rand") < 0.6, F.lit("TNFI"))
+         .when(F.col("bdmard_type_rand") < 0.85, F.lit("IL6I"))
+         .otherwise(F.lit("ABT"))
+    )
+)
+
+# TNFI（5種類からランダムに選択）
+tnfi_drugs = [("IFX", "4400101"), ("ETN", "4400102"), ("ADA", "4400103"),
+              ("GLM", "4400104"), ("CZP", "4400105")]
+tnfi_rand_val = F.round(F.rand(seed=2000) * 4).cast("int")  # 0-4
+
+df_tnfi = df_bdmard_candidates.filter(F.col("bdmard_type") == "TNFI").withColumn(
+    "drug_info",
+    F.when(tnfi_rand_val == 0, F.struct(F.lit("IFX").alias("name"), F.lit("4400101").alias("code")))
+     .when(tnfi_rand_val == 1, F.struct(F.lit("ETN").alias("name"), F.lit("4400102").alias("code")))
+     .when(tnfi_rand_val == 2, F.struct(F.lit("ADA").alias("name"), F.lit("4400103").alias("code")))
+     .when(tnfi_rand_val == 3, F.struct(F.lit("GLM").alias("name"), F.lit("4400104").alias("code")))
+     .otherwise(F.struct(F.lit("CZP").alias("name"), F.lit("4400105").alias("code")))
+).select(
+    "共通キー", "検索番号",
+    F.col("drug_info.code").alias("医薬品コード"),
+    F.lit("TNFI").alias("drug_category"),
+    F.col("drug_info.name").alias("drug_name")
+)
+
+medications_list.append(df_tnfi)
+
+# IL6I
+il6i_rand = F.rand(seed=2100)
+df_il6i = df_bdmard_candidates.filter(F.col("bdmard_type") == "IL6I").withColumn(
+    "drug_info",
+    F.when(il6i_rand < 0.5, F.struct(F.lit("TCZ").alias("name"), F.lit("4400201").alias("code")))
+     .otherwise(F.struct(F.lit("SAR").alias("name"), F.lit("4400202").alias("code")))
+).select(
+    "共通キー", "検索番号",
+    F.col("drug_info.code").alias("医薬品コード"),
+    F.lit("IL6I").alias("drug_category"),
+    F.col("drug_info.name").alias("drug_name")
+)
+
+medications_list.append(df_il6i)
+
+# ABT
+df_abt = df_bdmard_candidates.filter(F.col("bdmard_type") == "ABT") \
+    .withColumn("医薬品コード", F.lit("4400301")) \
+    .withColumn("drug_category", F.lit("ABT")) \
+    .withColumn("drug_name", F.lit("ABT")) \
+    .select("共通キー", "検索番号", "医薬品コード", "drug_category", "drug_name")
+
+medications_list.append(df_abt)
+
+# JAKi（低頻度）
+jaki_rand = F.rand(seed=2200)
+df_jaki = df_ra_receipts.filter(F.rand(seed=2300) < 0.01).withColumn(
+    "drug_info",
+    F.when(jaki_rand < 0.5, F.struct(F.lit("TOF").alias("name"), F.lit("4400401").alias("code")))
+     .otherwise(F.struct(F.lit("BAR").alias("name"), F.lit("4400402").alias("code")))
+).select(
+    "共通キー", "検索番号",
+    F.col("drug_info.code").alias("医薬品コード"),
+    F.lit("JAKi").alias("drug_category"),
+    F.col("drug_info.name").alias("drug_name")
+)
+
+medications_list.append(df_jaki)
+
+# CS（ステロイド）
+df_cs = df_ra_receipts \
+    .filter(F.rand(seed=2400) < F.lit(DRUG_USAGE_RATES["CS"])) \
+    .withColumn("医薬品コード", F.lit("2454001")) \
+    .withColumn("drug_category", F.lit("CS")) \
+    .withColumn("drug_name", F.lit("CS")) \
+    .select("共通キー", "検索番号", "医薬品コード", "drug_category", "drug_name")
+
+medications_list.append(df_cs)
+
+# 全薬剤を結合
+df_medications_final = medications_list[0]
+for df_med in medications_list[1:]:
+    df_medications_final = df_medications_final.union(df_med)
+
+medication_count = df_medications_final.count()
+print(f"  ✅ 医薬品情報生成完了: {medication_count:,}件")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 7. 診療行為（SI）の生成
+
+# COMMAND ----------
+
+print("\n[5/6] 診療行為を生成中...")
+
+procedures_list = []
+
+# TJR（人工関節全置換術）- 1%
+df_tjr = df_ra_receipts \
+    .filter(F.rand(seed=2500) < 0.01) \
+    .withColumn("procedure_type", F.lit("TJR")) \
+    .select("共通キー", "検索番号", "procedure_type")
+
+procedures_list.append(df_tjr)
+
+# ARTHROPLASTY（関節形成術）- 0.3%
+df_arthroplasty = df_ra_receipts \
+    .filter(F.rand(seed=2600) < 0.003) \
+    .withColumn("procedure_type", F.lit("ARTHROPLASTY")) \
+    .select("共通キー", "検索番号", "procedure_type")
+
+procedures_list.append(df_arthroplasty)
+
+# SYNOVECTOMY（滑膜切除術）- 0.1%（若年者のみ）
+df_synovectomy = df_ra_receipts \
+    .filter((F.col("age") < 70) & (F.rand(seed=2700) < 0.001)) \
+    .withColumn("procedure_type", F.lit("SYNOVECTOMY")) \
+    .select("共通キー", "検索番号", "procedure_type")
+
+procedures_list.append(df_synovectomy)
+
+# ULTRASOUND（関節超音波検査）- 18%
+df_ultrasound = df_ra_receipts \
+    .filter(F.rand(seed=2800) < 0.18) \
+    .withColumn("procedure_type", F.lit("ULTRASOUND")) \
+    .select("共通キー", "検索番号", "procedure_type")
+
+procedures_list.append(df_ultrasound)
+
+# BMD（骨密度測定）- 5% + 年齢依存で増加
+df_bmd = df_ra_receipts.withColumn(
+    "bmd_prob",
+    F.lit(0.05) + F.col("age") / 100.0 * 0.15  # 年齢が上がるほど増加
+).filter(F.rand(seed=2900) < F.col("bmd_prob")) \
+ .withColumn("procedure_type", F.lit("BMD")) \
+ .select("共通キー", "検索番号", "procedure_type")
+
+procedures_list.append(df_bmd)
+
+# VISIT（通常受診）- 全員
+df_visit = df_receipts_final \
+    .withColumn("procedure_type", F.lit("VISIT")) \
+    .select("共通キー", "検索番号", "procedure_type")
+
+procedures_list.append(df_visit)
+
+# 全診療行為を結合
+df_procedures_final = procedures_list[0]
+for df_proc in procedures_list[1:]:
+    df_procedures_final = df_procedures_final.union(df_proc)
+
+procedure_count = df_procedures_final.count()
+print(f"  ✅ 診療行為生成完了: {procedure_count:,}件")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 8. 保険者情報（HO）の生成
+
+# COMMAND ----------
+
+print("\n[6/6] 保険者情報を生成中...")
+
+# 各患者に保険者情報を割り当て
+# 年齢によって保険種別を決定
+df_insurer = df_patients.withColumn(
+    "insurer_type",
+    F.when(F.col("age") >= 75, F.lit("後期高齢者"))
+     .when(F.rand(seed=3000) < 0.6, F.lit("社保"))
+     .otherwise(F.lit("国保"))
+).withColumn(
+    "insurer_number",
+    F.concat(
+        F.lit("INS"),
+        F.lpad(F.col("patient_id").cast("string"), 8, "0")
+    )
+).select("共通キー", "insurer_type", "insurer_number")
+
+insurer_count = df_insurer.count()
+print(f"  ✅ 保険者情報生成完了: {insurer_count:,}件")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 9. Bronze層テーブルへの書き込み
+
+# COMMAND ----------
+
+print("\n" + "=" * 60)
+print("Bronzeテーブルへデータを書き込み中...")
+print("=" * 60)
+
+# データベースを使用
+spark.sql("USE reprod_paper08")
+
+# 1. bronze_patients
+print("\n[1/6] bronze_patients に書き込み中...")
+df_patients.write.format("delta").mode("overwrite").saveAsTable("bronze_patients")
+count = spark.table("bronze_patients").count()
+print(f"  ✅ 完了: {count:,}件")
+
+# 2. bronze_re_receipt
+print("\n[2/6] bronze_re_receipt に書き込み中...")
+df_receipts_final.write.format("delta").mode("overwrite").saveAsTable("bronze_re_receipt")
+count = spark.table("bronze_re_receipt").count()
+print(f"  ✅ 完了: {count:,}件")
+
+# 3. bronze_sy_disease
+print("\n[3/6] bronze_sy_disease に書き込み中...")
+df_diseases_final.write.format("delta").mode("overwrite").saveAsTable("bronze_sy_disease")
+count = spark.table("bronze_sy_disease").count()
+print(f"  ✅ 完了: {count:,}件")
+
+# 4. bronze_iy_medication
+print("\n[4/6] bronze_iy_medication に書き込み中...")
+df_medications_final.write.format("delta").mode("overwrite").saveAsTable("bronze_iy_medication")
+count = spark.table("bronze_iy_medication").count()
+print(f"  ✅ 完了: {count:,}件")
+
+# 5. bronze_si_procedure
+print("\n[5/6] bronze_si_procedure に書き込み中...")
+df_procedures_final.write.format("delta").mode("overwrite").saveAsTable("bronze_si_procedure")
+count = spark.table("bronze_si_procedure").count()
+print(f"  ✅ 完了: {count:,}件")
+
+# 6. bronze_ho_insurer
+print("\n[6/6] bronze_ho_insurer に書き込み中...")
+df_insurer.write.format("delta").mode("overwrite").saveAsTable("bronze_ho_insurer")
+count = spark.table("bronze_ho_insurer").count()
+print(f"  ✅ 完了: {count:,}件")
+
+print("\n" + "=" * 60)
+print("Bronze層データ生成完了！")
+print("=" * 60)
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 10. データ品質チェック
+
+# COMMAND ----------
+
+print("\n" + "=" * 60)
+print("データ品質チェック")
+print("=" * 60)
+
+# 患者マスタ
+print("\n【患者マスタ】")
+df_patients_check = spark.table("bronze_patients")
+print(f"総患者数: {df_patients_check.count():,}")
+print(f"RA候補患者数: {df_patients_check.filter('is_ra_candidate = true').count():,}")
+print(f"年齢範囲: {df_patients_check.agg(F.min('age'), F.max('age')).first()}")
+
+print("\n【性別分布（RA候補患者）】")
+df_patients_check.filter("is_ra_candidate = true").groupBy("sex").count().show()
+
+print("\n【年齢群分布（RA候補患者）】")
+df_patients_check.filter("is_ra_candidate = true") \
+    .groupBy("age_group").count() \
+    .orderBy("age_group").show()
+
+# レセプト
+print("\n【レセプト基本情報】")
+df_receipt_check = spark.table("bronze_re_receipt")
+print(f"総レセプト数: {df_receipt_check.count():,}")
+print(f"診療年月の範囲:")
+df_receipt_check.agg(F.min("診療年月"), F.max("診療年月")).show()
+
+# 傷病名
+print("\n【傷病名（RA関連コード）】")
+ra_codes_str = ", ".join([f"'{code}'" for code in RA_ICD10_CODES])
+df_disease_check = spark.table("bronze_sy_disease")
+ra_disease_count = df_disease_check.filter(f"ICD10コード IN ({ra_codes_str})").count()
+print(f"RA関連ICD-10レコード数: {ra_disease_count:,}")
+print(f"総傷病名レコード数: {df_disease_check.count():,}")
+
+# 医薬品
+print("\n【医薬品（カテゴリ別）】")
+spark.table("bronze_iy_medication").groupBy("drug_category").count().orderBy("drug_category").show()
+
+# 診療行為
+print("\n【診療行為（タイプ別）】")
+spark.table("bronze_si_procedure").groupBy("procedure_type").count().orderBy("procedure_type").show()
+
+print("\n" + "=" * 60)
+print("✅ Bronze層データ生成が完全に完了しました！")
+print("=" * 60)
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 完了
+# MAGIC
+# MAGIC Bronze層の全データ生成が完了しました。
+# MAGIC
+# MAGIC ### 生成されたテーブル
+# MAGIC 1. ✅ bronze_patients - 患者マスタ（10,000件）
+# MAGIC 2. ✅ bronze_re_receipt - レセプト基本情報（~25,000件）
+# MAGIC 3. ✅ bronze_sy_disease - 傷病名（~63,000件）
+# MAGIC 4. ✅ bronze_iy_medication - 医薬品情報（~1,300件）
+# MAGIC 5. ✅ bronze_si_procedure - 診療行為（~25,500件）
+# MAGIC 6. ✅ bronze_ho_insurer - 保険者情報（~10,000件）
+# MAGIC
+# MAGIC ### 次のステップ
+# MAGIC Silver層の実装に進んでください：
+# MAGIC 1. `silver/01_create_silver_tables.sql` - Silverテーブル作成
+# MAGIC 2. `silver/02_transform_ra_patients.sql` - RA患者定義適用
