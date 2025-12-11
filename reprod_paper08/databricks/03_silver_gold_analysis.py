@@ -352,7 +352,8 @@ print("\n[8/10] Silver層: RA患者マスタを作成中...")
 spark.sql("""
 CREATE OR REPLACE TEMP VIEW ra_patients_base AS
 SELECT
-    p.*,
+    p.*
+/*
     CASE
         WHEN p.age BETWEEN 16 AND 19 THEN '16-19'
         WHEN p.age BETWEEN 20 AND 29 THEN '20-29'
@@ -363,7 +364,8 @@ SELECT
         WHEN p.age BETWEEN 70 AND 79 THEN '70-79'
         WHEN p.age BETWEEN 80 AND 84 THEN '80-84'
         ELSE '85+'
-    END AS age_group
+     END AS age_group
+*/
 FROM reprod_paper08.bronze.patients p
 WHERE p.common_key IN (SELECT common_key FROM ra_patients_def3)
 """)
@@ -683,10 +685,11 @@ df_table2 = df_table2.withColumn(
 ).withColumn(
     "female_pct", F.round(F.col("n_female") / F.col("n") * 100, 1)
 ).withColumn(
-    "fm_ratio", F.round(F.col("n_female") / F.nullif(F.col("n_male"), 0), 2)
+    "fm_ratio", F.round(F.col("n_female") / F.when(F.col("n_male") == 0, None).otherwise(F.col("n_male")), 2)
 ).withColumn(
-    "prevalence", F.round(F.col("n") / F.nullif(F.col("n_all"), 0) * 100, 2)
+    "prevalence", F.round(F.col("n") / F.when(F.col("n_all") == 0, None).otherwise(F.col("n_all")) * 100, 2)
 )
+
 
 # 論文値を追加
 paper_table2_data = []
@@ -770,7 +773,7 @@ df_table3 = df_ra.groupBy("age_group").agg(
 # TNFI/ABT比率を計算
 df_table3 = df_table3.withColumn(
     "TNFI_ABT_ratio",
-    F.round(F.col("TNFI") / F.nullif(F.col("ABT"), 0), 1)
+    F.round(F.col("TNFI") / F.when(F.col("ABT") == 0, None).otherwise(F.col("ABT")), 1)
 )
 
 # 合計行を追加
@@ -791,7 +794,7 @@ total_row_3 = df_ra.agg(
     F.round(F.avg("bDMARDs") * 100, 1).alias("bDMARDs")
 ).withColumn(
     "TNFI_ABT_ratio",
-    F.round(F.col("TNFI") / F.nullif(F.col("ABT"), 0), 1)
+    F.round(F.col("TNFI") / F.when(F.col("ABT") == 0, None).otherwise(F.col("ABT")), 1)
 )
 
 df_table3_final = df_table3.union(total_row_3)
@@ -1096,5 +1099,3 @@ print("\n✅ 可視化完了")
 # MAGIC - **bDMARDs使用率**: 約23%
 # MAGIC
 # MAGIC 再現結果は論文値と概ね一致しています。
-
-# COMMAND ----------

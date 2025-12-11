@@ -44,11 +44,20 @@ spark.conf.set("spark.sql.shuffle.partitions", "8")
 
 # COMMAND ----------
 
+
+# 研究期間の定義
+STUDY_PERIOD_START = "2017-04-01"
+STUDY_PERIOD_END = "2018-03-31"
+REFERENCE_DATE = "2017-10-01"  # 年齢計算基準日
+FY = "2017"  # 会計年度
+
 # データ生成パラメータ
 N_TOTAL_PATIENTS = 10000
 RA_PREVALENCE = 0.0065
 RA_CANDIDATE_RATIO = 0.015
 RA_FEMALE_RATIO = 0.763
+GENERAL_FEMALE_RATIO = 0.51  # 一般人口の女性比率
+
 
 # 年齢群の定義
 AGE_GROUPS = [
@@ -476,7 +485,7 @@ df_receipts = df_receipts_raw \
 
 # 検索番号を生成
 df_receipts = df_receipts.withColumn(
-    "検索番号",
+    "receipt_id",
     F.concat(
         F.lit("RCP"),
         F.lpad(F.col("patient_id").cast("string"), 8, "0"),
@@ -536,7 +545,7 @@ ra_icd_lit = F.array([F.lit(code) for code in RA_ICD10_CODES])
 non_ra_icd_lit = F.array([F.lit(code) for code in NON_RA_ICD10_CODES])
 
 df_diseases = df_diseases_expanded.withColumn(
-    "ICD10コード",
+    "icd10_code",
     F.when(
         F.col("is_ra_candidate") & (F.col("disease_id") == 1),
         ra_icd_lit[F.round(F.rand(seed=1200) * (len(RA_ICD10_CODES) - 1)).cast("int")]
@@ -562,6 +571,8 @@ print(f"  ✅ 傷病名生成完了: {disease_count:,}件")
 
 print("\n[4/6] 医薬品情報を生成中...")
 
+
+BDMARD_TOTAL_RATE = 0.229
 # RA候補患者のレセプトのみに対して薬剤を割り当て
 df_ra_receipts = df_receipts_final.filter("is_ra_candidate = true")
 
@@ -899,14 +910,14 @@ df_patients_check.filter("is_ra_candidate = true") \
 print("\n【レセプト基本情報】")
 df_receipt_check = spark.table("reprod_paper08.bronze.re_receipt")
 print(f"総レセプト数: {df_receipt_check.count():,}")
-print(f"診療年月の範囲:")
-df_receipt_check.agg(F.min("診療年月"), F.max("診療年月")).show()
+#print(f"診療年月の範囲:")
+#df_receipt_check.agg(F.min("診療年月"), F.max("診療年月")).show()
 
 # 傷病名
 print("\n【傷病名（RA関連コード）】")
 ra_codes_str = ", ".join([f"'{code}'" for code in RA_ICD10_CODES])
 df_disease_check = spark.table("reprod_paper08.bronze.sy_disease")
-ra_disease_count = df_disease_check.filter(f"ICD10コード IN ({ra_codes_str})").count()
+ra_disease_count = df_disease_check.filter(f"icd10_code IN ({ra_codes_str})").count()
 print(f"RA関連ICD-10レコード数: {ra_disease_count:,}")
 print(f"総傷病名レコード数: {df_disease_check.count():,}")
 
@@ -952,6 +963,7 @@ print("=" * 60)
 
 # COMMAND ----------
 
+"""
 print("\n" + "=" * 60)
 print("列名を日本語にリネーム中...")
 print("=" * 60)
@@ -995,4 +1007,4 @@ print("\n" + "=" * 60)
 print("全ての列名を日本語にリネームしました")
 print("=" * 60)
 
-# COMMAND ----------
+"""
