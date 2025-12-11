@@ -27,15 +27,45 @@
 
 # COMMAND ----------
 
-# MAGIC %run ../config/constants
-
-# COMMAND ----------
-
 from pyspark.sql import functions as F
 from pyspark.sql.window import Window
 import matplotlib.pyplot as plt
 import matplotlib
 matplotlib.rcParams['font.size'] = 10
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 定数定義
+
+# COMMAND ----------
+
+# 年齢群別の論文値（Table 2）
+PAPER_TABLE2_VALUES = {
+    "16-19": {"pct": 0.5, "prevalence": 0.03, "female_pct": 64.0, "fm_ratio": 1.77},
+    "20-29": {"pct": 1.5, "prevalence": 0.07, "female_pct": 79.8, "fm_ratio": 3.94},
+    "30-39": {"pct": 4.8, "prevalence": 0.27, "female_pct": 80.7, "fm_ratio": 3.61},
+    "40-49": {"pct": 10.1, "prevalence": 0.44, "female_pct": 80.7, "fm_ratio": 4.18},
+    "50-59": {"pct": 14.9, "prevalence": 0.79, "female_pct": 79.3, "fm_ratio": 3.84},
+    "60-69": {"pct": 26.4, "prevalence": 1.23, "female_pct": 76.9, "fm_ratio": 3.33},
+    "70-79": {"pct": 28.6, "prevalence": 1.63, "female_pct": 74.3, "fm_ratio": 2.89},
+    "80-84": {"pct": 6.1, "prevalence": 1.14, "female_pct": 74.2, "fm_ratio": 2.88},
+    "85+": {"pct": 7.0, "prevalence": 0.89, "female_pct": 77.7, "fm_ratio": 3.49},
+}
+
+# MTX使用率（年齢群別、Table 3）
+PAPER_TABLE3_MTX_VALUES = {
+    "16-19": 59.9, "20-29": 60.9, "30-39": 64.7, "40-49": 69.9,
+    "50-59": 73.1, "60-69": 70.9, "70-79": 60.4, "80-84": 50.5, "85+": 38.2
+}
+
+# bDMARDs使用率（年齢群別、Table 3）
+PAPER_TABLE3_BDMARD_VALUES = {
+    "16-19": 50.9, "20-29": 42.9, "30-39": 34.8, "40-49": 30.9,
+    "50-59": 27.9, "60-69": 22.4, "70-79": 17.8, "80-84": 15.0, "85+": 13.7
+}
+
+# COMMAND ----------
 
 print("=" * 60)
 print("Gold Layer 分析を開始します")

@@ -402,18 +402,16 @@ def get_full_table_name(table_key, layer="bronze"):
 
     Returns:
     --------
-    str : 完全修飾テーブル名（例: "reprod_paper08.bronze_patients"）
+    str : 完全修飾テーブル名（例: "reprod_paper08.bronze.patients"）
     """
     if layer == "bronze":
-        table_name = BRONZE_TABLES.get(table_key, f"{BRONZE_PREFIX}{table_key}")
+        return BRONZE_TABLES.get(table_key)
     elif layer == "silver":
-        table_name = SILVER_TABLES.get(table_key, f"{SILVER_PREFIX}{table_key}")
+        return SILVER_TABLES.get(table_key)
     elif layer == "gold":
-        table_name = GOLD_TABLES.get(table_key, f"{GOLD_PREFIX}{table_key}")
+        return GOLD_TABLES.get(table_key)
     else:
         raise ValueError(f"Unknown layer: {layer}")
-
-    return f"{DATABASE_NAME}.{table_name}"
 
 
 def get_age_group(age):
@@ -461,8 +459,11 @@ def normalize_distribution(distribution_dict):
 print("=" * 60)
 print("Paper08 再現プロジェクト: 設定確認")
 print("=" * 60)
-print(f"\n【データベース設定】")
-print(f"データベース名: {DATABASE_NAME}")
+print(f"\n【Unity Catalog設定】")
+print(f"カタログ名: {CATALOG_NAME}")
+print(f"Bronzeスキーマ: {BRONZE_SCHEMA}")
+print(f"Silverスキーマ: {SILVER_SCHEMA}")
+print(f"Goldスキーマ: {GOLD_SCHEMA}")
 print(f"\n【データ生成パラメータ】")
 print(f"総患者数: {N_TOTAL_PATIENTS:,}")
 print(f"RA有病率: {RA_PREVALENCE:.2%}")

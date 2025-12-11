@@ -28,10 +28,6 @@
 
 # COMMAND ----------
 
-# MAGIC %run ../config/constants
-
-# COMMAND ----------
-
 from pyspark.sql import functions as F
 from pyspark.sql.types import *
 from pyspark.sql.window import Window
@@ -40,6 +36,84 @@ import random
 
 # パフォーマンス最適化: 小規模データなので shuffle partitions を減らす
 spark.conf.set("spark.sql.shuffle.partitions", "8")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 定数定義
+
+# COMMAND ----------
+
+# データ生成パラメータ
+N_TOTAL_PATIENTS = 10000
+RA_PREVALENCE = 0.0065
+RA_CANDIDATE_RATIO = 0.015
+RA_FEMALE_RATIO = 0.763
+
+# 年齢群の定義
+AGE_GROUPS = [
+    ("16-19", 16, 19),
+    ("20-29", 20, 29),
+    ("30-39", 30, 39),
+    ("40-49", 40, 49),
+    ("50-59", 50, 59),
+    ("60-69", 60, 69),
+    ("70-79", 70, 79),
+    ("80-84", 80, 84),
+    ("85+", 85, 100),
+]
+
+# RA患者の年齢群別分布
+AGE_GROUP_RA_DISTRIBUTION = {
+    "16-19": 0.5,
+    "20-29": 1.5,
+    "30-39": 4.8,
+    "40-49": 10.1,
+    "50-59": 14.9,
+    "60-69": 26.4,
+    "70-79": 28.6,
+    "80-84": 6.1,
+    "85+": 7.0,
+}
+
+# RA関連ICD-10コード
+RA_ICD10_CODES = [
+    "M050", "M051", "M052", "M053", "M058", "M059",
+    "M060", "M062", "M063", "M068", "M069",
+    "M080", "M083", "M084", "M088", "M089",
+]
+
+# 非RA疾患コード
+NON_RA_ICD10_CODES = [
+    "J00", "J06", "I10", "E11", "K21", "M54", "G43", "F32",
+]
+
+# 薬剤使用率
+DRUG_USAGE_RATES = {
+    "MTX": 0.634,
+    "SSZ": 0.249,
+    "BUC": 0.145,
+    "TAC": 0.106,
+    "IGT": 0.047,
+    "LEF": 0.030,
+    "TNFI": 0.135,
+    "IL6I": 0.060,
+    "ABT": 0.045,
+    "JAKi": 0.010,
+    "CS": 0.450,
+}
+
+# 診療行為タイプと実施率
+PROCEDURE_TYPES = {
+    "TJR": {"name_ja": "人工関節全置換術", "base_rate": 0.01},
+    "ARTHROPLASTY": {"name_ja": "関節形成術", "base_rate": 0.003},
+    "SYNOVECTOMY": {"name_ja": "滑膜切除術", "base_rate": 0.001},
+    "ULTRASOUND": {"name_ja": "関節超音波検査", "base_rate": 0.18},
+    "BMD": {"name_ja": "骨密度測定", "base_rate": 0.05},
+    "VISIT": {"name_ja": "通常受診", "base_rate": 1.0},
+}
+
+# COMMAND ----------
 
 print("=" * 60)
 print("Bronze Layer データ生成を開始します")
@@ -422,10 +496,10 @@ df_receipts = df_receipts \
         F.lpad(F.round(F.rand(seed=1000) * 46 + 1).cast("int").cast("string"), 2, "0")
     )
 
-# カラム選択
+# カラム選択（is_ra_candidate と age を含める - 内部処理用）
 df_receipts_final = df_receipts.select(
     "共通キー", "検索番号", "データ識別", "診療年月", "男女区分",
-    "birth_date", "fy", "year", "month", "prefecture_number"
+    "birth_date", "fy", "year", "month", "prefecture_number", "is_ra_candidate", "age"
 )
 
 receipt_count = df_receipts_final.count()
@@ -761,7 +835,9 @@ print(f"  ✅ 完了: {count:,}件")
 
 # 2. reprod_paper08.bronze.re_receipt
 print("\n[2/6] reprod_paper08.bronze.re_receipt に書き込み中...")
-df_receipts_final.write.format("delta").mode("overwrite").saveAsTable("reprod_paper08.bronze.re_receipt")
+# is_ra_candidate と age は内部処理用なので保存時は除外
+df_receipts_to_save = df_receipts_final.drop("is_ra_candidate", "age")
+df_receipts_to_save.write.format("delta").mode("overwrite").saveAsTable("reprod_paper08.bronze.re_receipt")
 count = spark.table("reprod_paper08.bronze.re_receipt").count()
 print(f"  ✅ 完了: {count:,}件")
 
