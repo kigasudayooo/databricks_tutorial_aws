@@ -140,7 +140,7 @@ print("=" * 60)
 spark.sql("""
 CREATE TABLE IF NOT EXISTS reprod_paper08.bronze.patients (
   patient_id BIGINT COMMENT '患者ID（0から連番）',
-  `共通キー` STRING COMMENT '共通キー（ハッシュ化された匿名ID）',
+  common_key STRING COMMENT '共通キー（ハッシュ化された匿名ID）',
   age INT COMMENT '年齢（2017年10月1日時点）',
   age_group STRING COMMENT '年齢群（16-19, 20-29, ..., 85+）',
   sex STRING COMMENT '性別（1: 男性, 2: 女性）',
@@ -155,12 +155,12 @@ print("  ✅ reprod_paper08.bronze.patients")
 # 2. re_receipt（レセプト基本情報）
 spark.sql("""
 CREATE TABLE IF NOT EXISTS reprod_paper08.bronze.re_receipt (
-  `共通キー` STRING COMMENT '共通キー（患者識別子）',
-  `検索番号` STRING COMMENT '検索番号（レセプト識別子）',
-  `データ識別` STRING COMMENT 'データ識別（1: 医科, 2: DPC）',
-  `診療年月` STRING COMMENT '診療年月（YYYYMM形式）',
-  `男女区分` STRING COMMENT '性別（1: 男性, 2: 女性）',
-  `生年月日` STRING COMMENT '生年月日（YYYY-MM-DD形式）',
+  common_key STRING COMMENT '共通キー（患者識別子）',
+  receipt_id STRING COMMENT '検索番号（レセプト識別子）',
+  data_type STRING COMMENT 'データ識別（1: 医科, 2: DPC）',
+  service_month STRING COMMENT '診療年月（YYYYMM形式）',
+  gender STRING COMMENT '性別（1: 男性, 2: 女性）',
+  birth_date STRING COMMENT '生年月日（YYYY-MM-DD形式）',
   fy STRING COMMENT '会計年度（2017）',
   year STRING COMMENT '診療年（YYYY）',
   month STRING COMMENT '診療月（MM）',
@@ -174,10 +174,10 @@ print("  ✅ reprod_paper08.bronze.re_receipt")
 # 3. sy_disease（傷病名）
 spark.sql("""
 CREATE TABLE IF NOT EXISTS reprod_paper08.bronze.sy_disease (
-  `共通キー` STRING COMMENT '共通キー（患者識別子）',
-  `検索番号` STRING COMMENT '検索番号（レセプト識別子）',
-  `ICD10コード` STRING COMMENT 'ICD-10傷病名コード（M05.x, M06.x, M08.x など）',
-  `診療年月` STRING COMMENT '診療年月（YYYYMM形式）'
+  common_key STRING COMMENT '共通キー（患者識別子）',
+  receipt_id STRING COMMENT '検索番号（レセプト識別子）',
+  icd10_code STRING COMMENT 'ICD-10傷病名コード（M05.x, M06.x, M08.x など）',
+  service_month STRING COMMENT '診療年月（YYYYMM形式）'
 )
 USING DELTA
 COMMENT 'Bronze層: 傷病名（SY）テーブル - ICD-10コードを含む'
@@ -187,9 +187,9 @@ print("  ✅ reprod_paper08.bronze.sy_disease")
 # 4. iy_medication（医薬品情報）
 spark.sql("""
 CREATE TABLE IF NOT EXISTS reprod_paper08.bronze.iy_medication (
-  `共通キー` STRING COMMENT '共通キー（患者識別子）',
-  `検索番号` STRING COMMENT '検索番号（レセプト識別子）',
-  `医薬品コード` STRING COMMENT '医薬品コード（YJコード相当）',
+  common_key STRING COMMENT '共通キー（患者識別子）',
+  receipt_id STRING COMMENT '検索番号（レセプト識別子）',
+  drug_code STRING COMMENT '医薬品コード（YJコード相当）',
   drug_category STRING COMMENT '薬剤カテゴリ（csDMARD, TNFI, IL6I, ABT, JAKi, CS）',
   drug_name STRING COMMENT '薬剤名（MTX, SSZ, IFX, etc.）'
 )
@@ -201,8 +201,8 @@ print("  ✅ reprod_paper08.bronze.iy_medication")
 # 5. si_procedure（診療行為）
 spark.sql("""
 CREATE TABLE IF NOT EXISTS reprod_paper08.bronze.si_procedure (
-  `共通キー` STRING COMMENT '共通キー（患者識別子）',
-  `検索番号` STRING COMMENT '検索番号（レセプト識別子）',
+  common_key STRING COMMENT '共通キー（患者識別子）',
+  receipt_id STRING COMMENT '検索番号（レセプト識別子）',
   procedure_type STRING COMMENT '診療行為タイプ（TJR, ARTHROPLASTY, SYNOVECTOMY, ULTRASOUND, BMD, VISIT）'
 )
 USING DELTA
@@ -213,7 +213,7 @@ print("  ✅ reprod_paper08.bronze.si_procedure")
 # 6. ho_insurer（保険者情報）
 spark.sql("""
 CREATE TABLE IF NOT EXISTS reprod_paper08.bronze.ho_insurer (
-  `共通キー` STRING COMMENT '共通キー（患者識別子）',
+  common_key STRING COMMENT '共通キー（患者識別子）',
   insurer_type STRING COMMENT '保険者種別（社保, 国保, 後期高齢者）',
   insurer_number STRING COMMENT '保険者番号'
 )
@@ -373,7 +373,7 @@ df_patients = df_ra_candidates.union(df_non_ra)
 
 # 共通キー（ハッシュキー）を生成
 df_patients = df_patients.withColumn(
-    "`共通キー`",
+    "common_key",
     F.substring(F.sha2(F.concat(F.lit("patient_"), F.col("patient_id")), 256), 1, 32)
 )
 
@@ -403,7 +403,7 @@ df_patients = df_patients.withColumn(
 
 # カラム順序を整理
 df_patients = df_patients.select(
-    "patient_id", "`共通キー`", "age", "age_group", "sex", "birth_date", "is_ra_candidate"
+    "patient_id", "common_key", "age", "age_group", "sex", "birth_date", "is_ra_candidate"
 )
 
 # 件数確認
@@ -438,7 +438,7 @@ while current <= end_date:
 # 月データフレーム
 df_months = spark.createDataFrame(
     [(i, month) for i, month in enumerate(months_list)],
-    ["month_id", "`診療年月`"]
+    ["month_id", "service_month"]
 )
 
 print(f"  研究期間: {len(months_list)}ヶ月 ({months_list[0]} ～ {months_list[-1]})")
@@ -463,7 +463,7 @@ df_patients_visits = df_patients.withColumn(
 # ここでは性能のためにクロス結合してサンプリング
 
 # 患者と月をクロス結合（小規模データなので可能）
-df_receipts_raw = df_patients_visits.crossJoin(df_months.select("`診療年月`"))
+df_receipts_raw = df_patients_visits.crossJoin(df_months.select("service_month"))
 
 # 各患者について、ランダムに n_visits 分の月を選択
 # Window関数を使って月ごとにランク付け
@@ -480,17 +480,17 @@ df_receipts = df_receipts.withColumn(
     F.concat(
         F.lit("RCP"),
         F.lpad(F.col("patient_id").cast("string"), 8, "0"),
-        F.col("`診療年月`")
+        F.col("service_month")
     )
 )
 
 # その他のカラムを追加
 df_receipts = df_receipts \
-    .withColumn("`データ識別`", F.lit("1")) \
-    .withColumn("`男女区分`", F.col("sex")) \
+    .withColumn("data_type", F.lit("1")) \
+    .withColumn("gender", F.col("sex")) \
     .withColumn("fy", F.lit(FY)) \
-    .withColumn("year", F.substring(F.col("`診療年月`"), 1, 4)) \
-    .withColumn("month", F.substring(F.col("`診療年月`"), 5, 2)) \
+    .withColumn("year", F.substring(F.col("service_month"), 1, 4)) \
+    .withColumn("month", F.substring(F.col("service_month"), 5, 2)) \
     .withColumn(
         "prefecture_number",
         F.lpad(F.round(F.rand(seed=1000) * 46 + 1).cast("int").cast("string"), 2, "0")
@@ -498,7 +498,7 @@ df_receipts = df_receipts \
 
 # カラム選択（is_ra_candidate と age を含める - 内部処理用）
 df_receipts_final = df_receipts.select(
-    "`共通キー`", "`検索番号`", "`データ識別`", "`診療年月`", "`男女区分`",
+    "common_key", "receipt_id", "data_type", "service_month", "gender",
     "birth_date", "fy", "year", "month", "prefecture_number", "is_ra_candidate", "age"
 )
 
@@ -547,7 +547,7 @@ df_diseases = df_diseases_expanded.withColumn(
 
 # 必要なカラムのみ選択
 df_diseases_final = df_diseases.select(
-    "`共通キー`", "`検索番号`", "`ICD10コード`", "`診療年月`"
+    "common_key", "receipt_id", "icd10_code", "service_month"
 )
 
 disease_count = df_diseases_final.count()
@@ -578,40 +578,40 @@ df_mtx = df_ra_receipts.withColumn(
      .when(F.col("age") >= 80, F.lit(DRUG_USAGE_RATES["MTX"] * 0.8))
      .otherwise(F.lit(DRUG_USAGE_RATES["MTX"]))
 ).filter(F.rand(seed=1400) < F.col("mtx_prob")) \
- .withColumn("`医薬品コード`", F.lit("1199101")) \
+ .withColumn("drug_code", F.lit("1199101")) \
  .withColumn("drug_category", F.lit("csDMARD")) \
  .withColumn("drug_name", F.lit("MTX")) \
- .select("`共通キー`", "`検索番号`", "`医薬品コード`", "drug_category", "drug_name")
+ .select("common_key", "receipt_id", "drug_code", "drug_category", "drug_name")
 
 medications_list.append(df_mtx)
 
 # SSZ
 df_ssz = df_ra_receipts \
     .filter(F.rand(seed=1500) < F.lit(DRUG_USAGE_RATES["SSZ"])) \
-    .withColumn("`医薬品コード`", F.lit("1199201")) \
+    .withColumn("drug_code", F.lit("1199201")) \
     .withColumn("drug_category", F.lit("csDMARD")) \
     .withColumn("drug_name", F.lit("SSZ")) \
-    .select("`共通キー`", "`検索番号`", "`医薬品コード`", "drug_category", "drug_name")
+    .select("common_key", "receipt_id", "drug_code", "drug_category", "drug_name")
 
 medications_list.append(df_ssz)
 
 # BUC
 df_buc = df_ra_receipts \
     .filter(F.rand(seed=1600) < F.lit(DRUG_USAGE_RATES["BUC"])) \
-    .withColumn("`医薬品コード`", F.lit("1199401")) \
+    .withColumn("drug_code", F.lit("1199401")) \
     .withColumn("drug_category", F.lit("csDMARD")) \
     .withColumn("drug_name", F.lit("BUC")) \
-    .select("`共通キー`", "`検索番号`", "`医薬品コード`", "drug_category", "drug_name")
+    .select("common_key", "receipt_id", "drug_code", "drug_category", "drug_name")
 
 medications_list.append(df_buc)
 
 # TAC
 df_tac = df_ra_receipts \
     .filter(F.rand(seed=1700) < F.lit(DRUG_USAGE_RATES["TAC"])) \
-    .withColumn("`医薬品コード`", F.lit("1199301")) \
+    .withColumn("drug_code", F.lit("1199301")) \
     .withColumn("drug_category", F.lit("csDMARD")) \
     .withColumn("drug_name", F.lit("TAC")) \
-    .select("`共通キー`", "`検索番号`", "`医薬品コード`", "drug_category", "drug_name")
+    .select("common_key", "receipt_id", "drug_code", "drug_category", "drug_name")
 
 medications_list.append(df_tac)
 
@@ -656,8 +656,8 @@ df_tnfi = df_bdmard_candidates.filter(F.col("bdmard_type") == "TNFI").withColumn
      .when(tnfi_rand_val == 3, F.struct(F.lit("GLM").alias("name"), F.lit("4400104").alias("code")))
      .otherwise(F.struct(F.lit("CZP").alias("name"), F.lit("4400105").alias("code")))
 ).select(
-    "`共通キー`", "`検索番号`",
-    F.col("drug_info.code").alias("`医薬品コード`"),
+    "common_key", "receipt_id",
+    F.col("drug_info.code").alias("drug_code"),
     F.lit("TNFI").alias("drug_category"),
     F.col("drug_info.name").alias("drug_name")
 )
@@ -671,8 +671,8 @@ df_il6i = df_bdmard_candidates.filter(F.col("bdmard_type") == "IL6I").withColumn
     F.when(il6i_rand < 0.5, F.struct(F.lit("TCZ").alias("name"), F.lit("4400201").alias("code")))
      .otherwise(F.struct(F.lit("SAR").alias("name"), F.lit("4400202").alias("code")))
 ).select(
-    "`共通キー`", "`検索番号`",
-    F.col("drug_info.code").alias("`医薬品コード`"),
+    "common_key", "receipt_id",
+    F.col("drug_info.code").alias("drug_code"),
     F.lit("IL6I").alias("drug_category"),
     F.col("drug_info.name").alias("drug_name")
 )
@@ -681,10 +681,10 @@ medications_list.append(df_il6i)
 
 # ABT
 df_abt = df_bdmard_candidates.filter(F.col("bdmard_type") == "ABT") \
-    .withColumn("`医薬品コード`", F.lit("4400301")) \
+    .withColumn("drug_code", F.lit("4400301")) \
     .withColumn("drug_category", F.lit("ABT")) \
     .withColumn("drug_name", F.lit("ABT")) \
-    .select("`共通キー`", "`検索番号`", "`医薬品コード`", "drug_category", "drug_name")
+    .select("common_key", "receipt_id", "drug_code", "drug_category", "drug_name")
 
 medications_list.append(df_abt)
 
@@ -695,8 +695,8 @@ df_jaki = df_ra_receipts.filter(F.rand(seed=2300) < 0.01).withColumn(
     F.when(jaki_rand < 0.5, F.struct(F.lit("TOF").alias("name"), F.lit("4400401").alias("code")))
      .otherwise(F.struct(F.lit("BAR").alias("name"), F.lit("4400402").alias("code")))
 ).select(
-    "`共通キー`", "`検索番号`",
-    F.col("drug_info.code").alias("`医薬品コード`"),
+    "common_key", "receipt_id",
+    F.col("drug_info.code").alias("drug_code"),
     F.lit("JAKi").alias("drug_category"),
     F.col("drug_info.name").alias("drug_name")
 )
@@ -706,10 +706,10 @@ medications_list.append(df_jaki)
 # CS（ステロイド）
 df_cs = df_ra_receipts \
     .filter(F.rand(seed=2400) < F.lit(DRUG_USAGE_RATES["CS"])) \
-    .withColumn("`医薬品コード`", F.lit("2454001")) \
+    .withColumn("drug_code", F.lit("2454001")) \
     .withColumn("drug_category", F.lit("CS")) \
     .withColumn("drug_name", F.lit("CS")) \
-    .select("`共通キー`", "`検索番号`", "`医薬品コード`", "drug_category", "drug_name")
+    .select("common_key", "receipt_id", "drug_code", "drug_category", "drug_name")
 
 medications_list.append(df_cs)
 
@@ -736,7 +736,7 @@ procedures_list = []
 df_tjr = df_ra_receipts \
     .filter(F.rand(seed=2500) < 0.01) \
     .withColumn("procedure_type", F.lit("TJR")) \
-    .select("`共通キー`", "`検索番号`", "procedure_type")
+    .select("common_key", "receipt_id", "procedure_type")
 
 procedures_list.append(df_tjr)
 
@@ -744,7 +744,7 @@ procedures_list.append(df_tjr)
 df_arthroplasty = df_ra_receipts \
     .filter(F.rand(seed=2600) < 0.003) \
     .withColumn("procedure_type", F.lit("ARTHROPLASTY")) \
-    .select("`共通キー`", "`検索番号`", "procedure_type")
+    .select("common_key", "receipt_id", "procedure_type")
 
 procedures_list.append(df_arthroplasty)
 
@@ -752,7 +752,7 @@ procedures_list.append(df_arthroplasty)
 df_synovectomy = df_ra_receipts \
     .filter((F.col("age") < 70) & (F.rand(seed=2700) < 0.001)) \
     .withColumn("procedure_type", F.lit("SYNOVECTOMY")) \
-    .select("`共通キー`", "`検索番号`", "procedure_type")
+    .select("common_key", "receipt_id", "procedure_type")
 
 procedures_list.append(df_synovectomy)
 
@@ -760,7 +760,7 @@ procedures_list.append(df_synovectomy)
 df_ultrasound = df_ra_receipts \
     .filter(F.rand(seed=2800) < 0.18) \
     .withColumn("procedure_type", F.lit("ULTRASOUND")) \
-    .select("`共通キー`", "`検索番号`", "procedure_type")
+    .select("common_key", "receipt_id", "procedure_type")
 
 procedures_list.append(df_ultrasound)
 
@@ -770,14 +770,14 @@ df_bmd = df_ra_receipts.withColumn(
     F.lit(0.05) + F.col("age") / 100.0 * 0.15  # 年齢が上がるほど増加
 ).filter(F.rand(seed=2900) < F.col("bmd_prob")) \
  .withColumn("procedure_type", F.lit("BMD")) \
- .select("`共通キー`", "`検索番号`", "procedure_type")
+ .select("common_key", "receipt_id", "procedure_type")
 
 procedures_list.append(df_bmd)
 
 # VISIT（通常受診）- 全員
 df_visit = df_receipts_final \
     .withColumn("procedure_type", F.lit("VISIT")) \
-    .select("`共通キー`", "`検索番号`", "procedure_type")
+    .select("common_key", "receipt_id", "procedure_type")
 
 procedures_list.append(df_visit)
 
@@ -811,7 +811,7 @@ df_insurer = df_patients.withColumn(
         F.lit("INS"),
         F.lpad(F.col("patient_id").cast("string"), 8, "0")
     )
-).select("`共通キー`", "insurer_type", "insurer_number")
+).select("common_key", "insurer_type", "insurer_number")
 
 insurer_count = df_insurer.count()
 print(f"  ✅ 保険者情報生成完了: {insurer_count:,}件")
@@ -941,3 +941,58 @@ print("=" * 60)
 # MAGIC Silver層の実装に進んでください：
 # MAGIC 1. `silver/01_create_silver_tables.sql` - Silverテーブル作成
 # MAGIC 2. `silver/02_transform_ra_patients.sql` - RA患者定義適用
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 11. 列名を日本語にリネーム（オプション）
+# MAGIC
+# MAGIC 英語列名を日本語列名にリネームします。
+# MAGIC このセルは必要に応じて実行してください。
+
+# COMMAND ----------
+
+print("\n" + "=" * 60)
+print("列名を日本語にリネーム中...")
+print("=" * 60)
+
+# patients テーブル
+spark.sql("ALTER TABLE reprod_paper08.bronze.patients RENAME COLUMN common_key TO `共通キー`")
+print("✅ patients.common_key → 共通キー")
+
+# re_receipt テーブル
+spark.sql("ALTER TABLE reprod_paper08.bronze.re_receipt RENAME COLUMN common_key TO `共通キー`")
+spark.sql("ALTER TABLE reprod_paper08.bronze.re_receipt RENAME COLUMN receipt_id TO `検索番号`")
+spark.sql("ALTER TABLE reprod_paper08.bronze.re_receipt RENAME COLUMN data_type TO `データ識別`")
+spark.sql("ALTER TABLE reprod_paper08.bronze.re_receipt RENAME COLUMN service_month TO `診療年月`")
+spark.sql("ALTER TABLE reprod_paper08.bronze.re_receipt RENAME COLUMN gender TO `男女区分`")
+spark.sql("ALTER TABLE reprod_paper08.bronze.re_receipt RENAME COLUMN birth_date TO `生年月日`")
+print("✅ re_receipt 列名変更完了")
+
+# sy_disease テーブル
+spark.sql("ALTER TABLE reprod_paper08.bronze.sy_disease RENAME COLUMN common_key TO `共通キー`")
+spark.sql("ALTER TABLE reprod_paper08.bronze.sy_disease RENAME COLUMN receipt_id TO `検索番号`")
+spark.sql("ALTER TABLE reprod_paper08.bronze.sy_disease RENAME COLUMN icd10_code TO `ICD10コード`")
+spark.sql("ALTER TABLE reprod_paper08.bronze.sy_disease RENAME COLUMN service_month TO `診療年月`")
+print("✅ sy_disease 列名変更完了")
+
+# iy_medication テーブル
+spark.sql("ALTER TABLE reprod_paper08.bronze.iy_medication RENAME COLUMN common_key TO `共通キー`")
+spark.sql("ALTER TABLE reprod_paper08.bronze.iy_medication RENAME COLUMN receipt_id TO `検索番号`")
+spark.sql("ALTER TABLE reprod_paper08.bronze.iy_medication RENAME COLUMN drug_code TO `医薬品コード`")
+print("✅ iy_medication 列名変更完了")
+
+# si_procedure テーブル
+spark.sql("ALTER TABLE reprod_paper08.bronze.si_procedure RENAME COLUMN common_key TO `共通キー`")
+spark.sql("ALTER TABLE reprod_paper08.bronze.si_procedure RENAME COLUMN receipt_id TO `検索番号`")
+print("✅ si_procedure 列名変更完了")
+
+# ho_insurer テーブル
+spark.sql("ALTER TABLE reprod_paper08.bronze.ho_insurer RENAME COLUMN common_key TO `共通キー`")
+print("✅ ho_insurer 列名変更完了")
+
+print("\n" + "=" * 60)
+print("全ての列名を日本語にリネームしました")
+print("=" * 60)
+
+# COMMAND ----------

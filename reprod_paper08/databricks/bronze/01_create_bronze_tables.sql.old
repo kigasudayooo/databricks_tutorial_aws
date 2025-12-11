@@ -1,9 +1,8 @@
 -- Databricks notebook source
 -- MAGIC %md
--- MAGIC # Bronze Layer: テーブル定義（DDL） - Unity Catalog対応（英語列名版）
+-- MAGIC # Bronze Layer: テーブル定義（DDL） - Unity Catalog対応
 -- MAGIC
--- MAGIC このノートブックでは、Bronze層の全テーブルを英語列名で作成します。
--- MAGIC データ処理は英語列名で行い、最後に日本語列名にリネームします。
+-- MAGIC このノートブックでは、Bronze層の全テーブルをUnity Catalog形式で作成します。
 -- MAGIC
 -- MAGIC ## Bronze層のテーブル構成
 -- MAGIC
@@ -16,17 +15,15 @@
 -- MAGIC | si_procedure | 診療行為（SI） | ~25,500 |
 -- MAGIC | ho_insurer | 保険者情報（HO） | ~10,000 |
 -- MAGIC
--- MAGIC ## 列名マッピング（英語 → 日本語）
+-- MAGIC 全てのテーブルは **Delta Lake形式** で作成され、Unity Catalogで管理されます。
+
+-- COMMAND ----------
+
+-- MAGIC %md
+-- MAGIC ## 前提条件
 -- MAGIC
--- MAGIC | 英語列名 | 日本語列名 |
--- MAGIC |---------|-----------|
--- MAGIC | common_key | 共通キー |
--- MAGIC | receipt_id | 検索番号 |
--- MAGIC | data_type | データ識別 |
--- MAGIC | service_month | 診療年月 |
--- MAGIC | gender | 男女区分 |
--- MAGIC | drug_code | 医薬品コード |
--- MAGIC | icd10_code | ICD10コード |
+-- MAGIC - `00_setup_catalog.sql` が実行済みであること
+-- MAGIC - カタログ `reprod_paper08` とスキーマ `bronze` が作成済みであること
 
 -- COMMAND ----------
 
@@ -37,7 +34,7 @@
 
 CREATE TABLE IF NOT EXISTS reprod_paper08.bronze.patients (
   patient_id BIGINT COMMENT '患者ID（0から連番）',
-  common_key STRING COMMENT '共通キー（ハッシュ化された匿名ID）',
+  `共通キー` STRING COMMENT '共通キー（ハッシュ化された匿名ID）',
   age INT COMMENT '年齢（2017年10月1日時点）',
   age_group STRING COMMENT '年齢群（16-19, 20-29, ..., 85+）',
   sex STRING COMMENT '性別（1: 男性, 2: 女性）',
@@ -59,12 +56,12 @@ SELECT "Table reprod_paper08.bronze.patients created successfully" AS status;
 -- COMMAND ----------
 
 CREATE TABLE IF NOT EXISTS reprod_paper08.bronze.re_receipt (
-  common_key STRING COMMENT '共通キー（患者識別子）',
-  receipt_id STRING COMMENT '検索番号（レセプト識別子）',
-  data_type STRING COMMENT 'データ識別（1: 医科, 2: DPC）',
-  service_month STRING COMMENT '診療年月（YYYYMM形式）',
-  gender STRING COMMENT '性別（1: 男性, 2: 女性）',
-  birth_date STRING COMMENT '生年月日（YYYY-MM-DD形式）',
+  `共通キー` STRING COMMENT '共通キー（患者識別子）',
+  `検索番号` STRING COMMENT '検索番号（レセプト識別子）',
+  `データ識別` STRING COMMENT 'データ識別（1: 医科, 2: DPC）',
+  `診療年月` STRING COMMENT '診療年月（YYYYMM形式）',
+  `男女区分` STRING COMMENT '性別（1: 男性, 2: 女性）',
+  `生年月日` STRING COMMENT '生年月日（YYYY-MM-DD形式）',
   fy STRING COMMENT '会計年度（2017）',
   year STRING COMMENT '診療年（YYYY）',
   month STRING COMMENT '診療月（MM）',
@@ -85,10 +82,10 @@ SELECT "Table reprod_paper08.bronze.re_receipt created successfully" AS status;
 -- COMMAND ----------
 
 CREATE TABLE IF NOT EXISTS reprod_paper08.bronze.sy_disease (
-  common_key STRING COMMENT '共通キー（患者識別子）',
-  receipt_id STRING COMMENT '検索番号（レセプト識別子）',
-  icd10_code STRING COMMENT 'ICD-10傷病名コード（M05.x, M06.x, M08.x など）',
-  service_month STRING COMMENT '診療年月（YYYYMM形式）'
+  `共通キー` STRING COMMENT '共通キー（患者識別子）',
+  `検索番号` STRING COMMENT '検索番号（レセプト識別子）',
+  `ICD10コード` STRING COMMENT 'ICD-10傷病名コード（M05.x, M06.x, M08.x など）',
+  `診療年月` STRING COMMENT '診療年月（YYYYMM形式）'
 )
 USING DELTA
 COMMENT 'Bronze層: 傷病名（SY）テーブル - ICD-10コードを含む';
@@ -105,9 +102,9 @@ SELECT "Table reprod_paper08.bronze.sy_disease created successfully" AS status;
 -- COMMAND ----------
 
 CREATE TABLE IF NOT EXISTS reprod_paper08.bronze.iy_medication (
-  common_key STRING COMMENT '共通キー（患者識別子）',
-  receipt_id STRING COMMENT '検索番号（レセプト識別子）',
-  drug_code STRING COMMENT '医薬品コード（YJコード相当）',
+  `共通キー` STRING COMMENT '共通キー（患者識別子）',
+  `検索番号` STRING COMMENT '検索番号（レセプト識別子）',
+  `医薬品コード` STRING COMMENT '医薬品コード（YJコード相当）',
   drug_category STRING COMMENT '薬剤カテゴリ（csDMARD, TNFI, IL6I, ABT, JAKi, CS）',
   drug_name STRING COMMENT '薬剤名（MTX, SSZ, IFX, etc.）'
 )
@@ -126,8 +123,8 @@ SELECT "Table reprod_paper08.bronze.iy_medication created successfully" AS statu
 -- COMMAND ----------
 
 CREATE TABLE IF NOT EXISTS reprod_paper08.bronze.si_procedure (
-  common_key STRING COMMENT '共通キー（患者識別子）',
-  receipt_id STRING COMMENT '検索番号（レセプト識別子）',
+  `共通キー` STRING COMMENT '共通キー（患者識別子）',
+  `検索番号` STRING COMMENT '検索番号（レセプト識別子）',
   procedure_type STRING COMMENT '診療行為タイプ（TJR, ARTHROPLASTY, SYNOVECTOMY, ULTRASOUND, BMD, VISIT）'
 )
 USING DELTA
@@ -145,7 +142,7 @@ SELECT "Table reprod_paper08.bronze.si_procedure created successfully" AS status
 -- COMMAND ----------
 
 CREATE TABLE IF NOT EXISTS reprod_paper08.bronze.ho_insurer (
-  common_key STRING COMMENT '共通キー（患者識別子）',
+  `共通キー` STRING COMMENT '共通キー（患者識別子）',
   insurer_type STRING COMMENT '保険者種別（社保, 国保, 後期高齢者）',
   insurer_number STRING COMMENT '保険者番号'
 )
@@ -168,9 +165,19 @@ SHOW TABLES IN reprod_paper08.bronze;
 -- COMMAND ----------
 
 -- MAGIC %md
+-- MAGIC ## テーブル詳細確認
+
+-- COMMAND ----------
+
+-- 患者マスタのスキーマ確認
+DESCRIBE EXTENDED reprod_paper08.bronze.patients;
+
+-- COMMAND ----------
+
+-- MAGIC %md
 -- MAGIC ## 完了
 -- MAGIC
--- MAGIC Bronze層の全6テーブルの作成が完了しました（英語列名版）。
+-- MAGIC Bronze層の全6テーブルの作成が完了しました。
 -- MAGIC
 -- MAGIC ### 作成されたテーブル（Unity Catalog）
 -- MAGIC 1. ✅ `reprod_paper08.bronze.patients`
@@ -179,6 +186,15 @@ SHOW TABLES IN reprod_paper08.bronze;
 -- MAGIC 4. ✅ `reprod_paper08.bronze.iy_medication`
 -- MAGIC 5. ✅ `reprod_paper08.bronze.si_procedure`
 -- MAGIC 6. ✅ `reprod_paper08.bronze.ho_insurer`
+-- MAGIC
+-- MAGIC ### 検証クエリ
+-- MAGIC ```sql
+-- MAGIC -- 全テーブルの確認
+-- MAGIC SHOW TABLES IN reprod_paper08.bronze;
+-- MAGIC
+-- MAGIC -- カウント確認（データ生成後）
+-- MAGIC SELECT COUNT(*) FROM reprod_paper08.bronze.patients;  -- 10,000
+-- MAGIC ```
 -- MAGIC
 -- MAGIC ### 次のステップ
 -- MAGIC 次のノートブックを実行してデータを生成してください：

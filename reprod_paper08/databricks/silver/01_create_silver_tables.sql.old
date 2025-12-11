@@ -44,7 +44,7 @@
 
 CREATE TABLE IF NOT EXISTS reprod_paper08.silver.ra_patients_def3 (
   patient_id BIGINT COMMENT '患者ID',
-  common_key STRING COMMENT '共通キー（匿名化ID）',
+  `共通キー` STRING COMMENT '共通キー（匿名化ID）',
   age INT COMMENT '年齢',
   age_group STRING COMMENT '年齢群',
   sex STRING COMMENT '性別（1: 男性, 2: 女性）',
