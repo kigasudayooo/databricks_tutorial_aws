@@ -34,7 +34,7 @@
 
 CREATE TABLE IF NOT EXISTS reprod_paper08.bronze.patients (
   patient_id BIGINT COMMENT '患者ID（0から連番）',
-  共通キー STRING COMMENT '共通キー（ハッシュ化された匿名ID）',
+  `共通キー` STRING COMMENT '共通キー（ハッシュ化された匿名ID）',
   age INT COMMENT '年齢（2017年10月1日時点）',
   age_group STRING COMMENT '年齢群（16-19, 20-29, ..., 85+）',
   sex STRING COMMENT '性別（1: 男性, 2: 女性）',
@@ -56,12 +56,12 @@ SELECT "Table reprod_paper08.bronze.patients created successfully" AS status;
 -- COMMAND ----------
 
 CREATE TABLE IF NOT EXISTS reprod_paper08.bronze.re_receipt (
-  共通キー STRING COMMENT '共通キー（患者識別子）',
-  検索番号 STRING COMMENT '検索番号（レセプト識別子）',
-  データ識別 STRING COMMENT 'データ識別（1: 医科, 2: DPC）',
-  診療年月 STRING COMMENT '診療年月（YYYYMM形式）',
-  男女区分 STRING COMMENT '性別（1: 男性, 2: 女性）',
-  生年月日 STRING COMMENT '生年月日（YYYY-MM-DD形式）',
+  `共通キー` STRING COMMENT '共通キー（患者識別子）',
+  `検索番号` STRING COMMENT '検索番号（レセプト識別子）',
+  `データ識別` STRING COMMENT 'データ識別（1: 医科, 2: DPC）',
+  `診療年月` STRING COMMENT '診療年月（YYYYMM形式）',
+  `男女区分` STRING COMMENT '性別（1: 男性, 2: 女性）',
+  `生年月日` STRING COMMENT '生年月日（YYYY-MM-DD形式）',
   fy STRING COMMENT '会計年度（2017）',
   year STRING COMMENT '診療年（YYYY）',
   month STRING COMMENT '診療月（MM）',
@@ -82,10 +82,10 @@ SELECT "Table reprod_paper08.bronze.re_receipt created successfully" AS status;
 -- COMMAND ----------
 
 CREATE TABLE IF NOT EXISTS reprod_paper08.bronze.sy_disease (
-  共通キー STRING COMMENT '共通キー（患者識別子）',
-  検索番号 STRING COMMENT '検索番号（レセプト識別子）',
-  ICD10コード STRING COMMENT 'ICD-10傷病名コード（M05.x, M06.x, M08.x など）',
-  診療年月 STRING COMMENT '診療年月（YYYYMM形式）'
+  `共通キー` STRING COMMENT '共通キー（患者識別子）',
+  `検索番号` STRING COMMENT '検索番号（レセプト識別子）',
+  `ICD10コード` STRING COMMENT 'ICD-10傷病名コード（M05.x, M06.x, M08.x など）',
+  `診療年月` STRING COMMENT '診療年月（YYYYMM形式）'
 )
 USING DELTA
 COMMENT 'Bronze層: 傷病名（SY）テーブル - ICD-10コードを含む';
@@ -102,9 +102,9 @@ SELECT "Table reprod_paper08.bronze.sy_disease created successfully" AS status;
 -- COMMAND ----------
 
 CREATE TABLE IF NOT EXISTS reprod_paper08.bronze.iy_medication (
-  共通キー STRING COMMENT '共通キー（患者識別子）',
-  検索番号 STRING COMMENT '検索番号（レセプト識別子）',
-  医薬品コード STRING COMMENT '医薬品コード（YJコード相当）',
+  `共通キー` STRING COMMENT '共通キー（患者識別子）',
+  `検索番号` STRING COMMENT '検索番号（レセプト識別子）',
+  `医薬品コード` STRING COMMENT '医薬品コード（YJコード相当）',
   drug_category STRING COMMENT '薬剤カテゴリ（csDMARD, TNFI, IL6I, ABT, JAKi, CS）',
   drug_name STRING COMMENT '薬剤名（MTX, SSZ, IFX, etc.）'
 )
@@ -123,8 +123,8 @@ SELECT "Table reprod_paper08.bronze.iy_medication created successfully" AS statu
 -- COMMAND ----------
 
 CREATE TABLE IF NOT EXISTS reprod_paper08.bronze.si_procedure (
-  共通キー STRING COMMENT '共通キー（患者識別子）',
-  検索番号 STRING COMMENT '検索番号（レセプト識別子）',
+  `共通キー` STRING COMMENT '共通キー（患者識別子）',
+  `検索番号` STRING COMMENT '検索番号（レセプト識別子）',
   procedure_type STRING COMMENT '診療行為タイプ（TJR, ARTHROPLASTY, SYNOVECTOMY, ULTRASOUND, BMD, VISIT）'
 )
 USING DELTA
@@ -142,7 +142,7 @@ SELECT "Table reprod_paper08.bronze.si_procedure created successfully" AS status
 -- COMMAND ----------
 
 CREATE TABLE IF NOT EXISTS reprod_paper08.bronze.ho_insurer (
-  共通キー STRING COMMENT '共通キー（患者識別子）',
+  `共通キー` STRING COMMENT '共通キー（患者識別子）',
   insurer_type STRING COMMENT '保険者種別（社保, 国保, 後期高齢者）',
   insurer_number STRING COMMENT '保険者番号'
 )

@@ -79,7 +79,7 @@ SELECT "All DMARDs codes defined" AS status;
 CREATE OR REPLACE TEMP VIEW ra_patients_def0 AS
 SELECT DISTINCT 共通キー
 FROM reprod_paper08.bronze.sy_disease
-WHERE ICD10コード IN (SELECT code FROM ra_icd10_codes);
+WHERE `ICD10コード` IN (SELECT code FROM ra_icd10_codes);
 
 -- 患者数を確認
 SELECT COUNT(*) AS def0_patient_count
@@ -93,16 +93,16 @@ FROM ra_patients_def0;
 -- COMMAND ----------
 
 -- CRITICAL: DMARDs処方月数を計算
--- 各患者について、レセプトの診療年月を JOIN して、ユニークな月数をカウント
+-- 各患者について、レセプトの`診療年月`を JOIN して、ユニークな月数をカウント
 CREATE OR REPLACE TEMP VIEW dmard_prescription_months AS
 SELECT
-    iy.共通キー,
-    COUNT(DISTINCT re.診療年月) AS prescription_months
+    iy.`共通キー`,
+    COUNT(DISTINCT re.`診療年月`) AS prescription_months
 FROM reprod_paper08.bronze.iy_medication iy
-INNER JOIN reprod_paper08.bronze.re_receipt re ON iy.検索番号 = re.検索番号
-WHERE iy.共通キー IN (SELECT 共通キー FROM ra_patients_def0)
-  AND iy.医薬品コード IN (SELECT code FROM all_dmard_codes)
-GROUP BY iy.共通キー;
+INNER JOIN reprod_paper08.bronze.re_receipt re ON iy.`検索番号` = re.検索番号
+WHERE iy.`共通キー` IN (SELECT `共通キー` FROM ra_patients_def0)
+  AND iy.`医薬品コード` IN (SELECT code FROM all_dmard_codes)
+GROUP BY iy.`共通キー`;
 
 -- 処方月数の分布を確認
 SELECT
@@ -126,21 +126,21 @@ FROM dmard_prescription_months;
 CREATE OR REPLACE TEMP VIEW ra_patients_def2 AS
 SELECT DISTINCT d0.共通キー
 FROM ra_patients_def0 d0
-INNER JOIN dmard_prescription_months dpm ON d0.共通キー = dpm.共通キー
+INNER JOIN dmard_prescription_months dpm ON d0.`共通キー` = dpm.`共通キー`
 WHERE dpm.prescription_months >= 1;
 
 -- Definition 3: ICD-10 + DMARDs ≥2ヶ月（主要定義）
 CREATE OR REPLACE TEMP VIEW ra_patients_def3 AS
 SELECT DISTINCT d0.共通キー
 FROM ra_patients_def0 d0
-INNER JOIN dmard_prescription_months dpm ON d0.共通キー = dpm.共通キー
+INNER JOIN dmard_prescription_months dpm ON d0.`共通キー` = dpm.`共通キー`
 WHERE dpm.prescription_months >= 2;
 
 -- Definition 4: ICD-10 + DMARDs ≥6ヶ月
 CREATE OR REPLACE TEMP VIEW ra_patients_def4 AS
 SELECT DISTINCT d0.共通キー
 FROM ra_patients_def0 d0
-INNER JOIN dmard_prescription_months dpm ON d0.共通キー = dpm.共通キー
+INNER JOIN dmard_prescription_months dpm ON d0.`共通キー` = dpm.`共通キー`
 WHERE dpm.prescription_months >= 6;
 
 -- 各定義の患者数を確認
@@ -180,27 +180,27 @@ FROM ra_patients_def4;
 -- 各患者の薬剤使用パターンを集計
 CREATE OR REPLACE TEMP VIEW drug_usage AS
 SELECT
-    p.共通キー,
+    p.`共通キー`,
     -- csDMARDs
-    MAX(CASE WHEN iy.医薬品コード IN ('1199101', '1199102') THEN 1 ELSE 0 END) AS MTX,
-    MAX(CASE WHEN iy.医薬品コード IN ('1199201') THEN 1 ELSE 0 END) AS SSZ,
-    MAX(CASE WHEN iy.医薬品コード IN ('1199401') THEN 1 ELSE 0 END) AS BUC,
-    MAX(CASE WHEN iy.医薬品コード IN ('1199301') THEN 1 ELSE 0 END) AS TAC,
-    MAX(CASE WHEN iy.医薬品コード IN ('1199501') THEN 1 ELSE 0 END) AS IGT,
-    MAX(CASE WHEN iy.医薬品コード IN ('1199601') THEN 1 ELSE 0 END) AS LEF,
+    MAX(CASE WHEN iy.`医薬品コード` IN ('1199101', '1199102') THEN 1 ELSE 0 END) AS MTX,
+    MAX(CASE WHEN iy.`医薬品コード` IN ('1199201') THEN 1 ELSE 0 END) AS SSZ,
+    MAX(CASE WHEN iy.`医薬品コード` IN ('1199401') THEN 1 ELSE 0 END) AS BUC,
+    MAX(CASE WHEN iy.`医薬品コード` IN ('1199301') THEN 1 ELSE 0 END) AS TAC,
+    MAX(CASE WHEN iy.`医薬品コード` IN ('1199501') THEN 1 ELSE 0 END) AS IGT,
+    MAX(CASE WHEN iy.`医薬品コード` IN ('1199601') THEN 1 ELSE 0 END) AS LEF,
     -- bDMARDs - TNFI
-    MAX(CASE WHEN iy.医薬品コード IN ('4400101','4400102','4400103','4400104','4400105') THEN 1 ELSE 0 END) AS TNFI,
+    MAX(CASE WHEN iy.`医薬品コード` IN ('4400101','4400102','4400103','4400104','4400105') THEN 1 ELSE 0 END) AS TNFI,
     -- bDMARDs - IL6I
-    MAX(CASE WHEN iy.医薬品コード IN ('4400201','4400202') THEN 1 ELSE 0 END) AS IL6I,
+    MAX(CASE WHEN iy.`医薬品コード` IN ('4400201','4400202') THEN 1 ELSE 0 END) AS IL6I,
     -- bDMARDs - ABT
-    MAX(CASE WHEN iy.医薬品コード IN ('4400301') THEN 1 ELSE 0 END) AS ABT,
+    MAX(CASE WHEN iy.`医薬品コード` IN ('4400301') THEN 1 ELSE 0 END) AS ABT,
     -- tsDMARDs - JAKi
-    MAX(CASE WHEN iy.医薬品コード IN ('4400401','4400402') THEN 1 ELSE 0 END) AS JAKi,
+    MAX(CASE WHEN iy.`医薬品コード` IN ('4400401','4400402') THEN 1 ELSE 0 END) AS JAKi,
     -- CS (コルチコステロイド)
-    MAX(CASE WHEN iy.医薬品コード IN ('2454001','2454002','2454003') THEN 1 ELSE 0 END) AS CS
+    MAX(CASE WHEN iy.`医薬品コード` IN ('2454001','2454002','2454003') THEN 1 ELSE 0 END) AS CS
 FROM ra_patients_def3 p
-LEFT JOIN reprod_paper08.bronze.iy_medication iy ON p.共通キー = iy.共通キー
-GROUP BY p.共通キー;
+LEFT JOIN reprod_paper08.bronze.iy_medication iy ON p.`共通キー` = iy.`共通キー`
+GROUP BY p.`共通キー`;
 
 -- 薬剤使用率を確認
 SELECT '薬剤使用率（Definition 3患者）' AS category;
@@ -229,15 +229,15 @@ FROM drug_usage;
 -- 各患者の手術・検査実施パターンを集計
 CREATE OR REPLACE TEMP VIEW procedure_usage AS
 SELECT
-    p.共通キー,
+    p.`共通キー`,
     MAX(CASE WHEN si.procedure_type = 'TJR' THEN 1 ELSE 0 END) AS TJR,
     MAX(CASE WHEN si.procedure_type = 'ARTHROPLASTY' THEN 1 ELSE 0 END) AS ARTHROPLASTY,
     MAX(CASE WHEN si.procedure_type = 'SYNOVECTOMY' THEN 1 ELSE 0 END) AS SYNOVECTOMY,
     MAX(CASE WHEN si.procedure_type = 'ULTRASOUND' THEN 1 ELSE 0 END) AS ULTRASOUND,
     MAX(CASE WHEN si.procedure_type = 'BMD' THEN 1 ELSE 0 END) AS BMD
 FROM ra_patients_def3 p
-LEFT JOIN reprod_paper08.bronze.si_procedure si ON p.共通キー = si.共通キー
-GROUP BY p.共通キー;
+LEFT JOIN reprod_paper08.bronze.si_procedure si ON p.`共通キー` = si.`共通キー`
+GROUP BY p.`共通キー`;
 
 -- 手術・検査実施率を確認
 SELECT '手術・検査実施率（Definition 3患者）' AS category;
@@ -273,7 +273,7 @@ SELECT
         ELSE '85+'
     END AS age_group
 FROM reprod_paper08.bronze.patients p
-WHERE p.共通キー IN (SELECT 共通キー FROM ra_patients_def3);
+WHERE p.`共通キー` IN (SELECT `共通キー` FROM ra_patients_def3);
 
 -- 基本統計を確認
 SELECT
@@ -297,7 +297,7 @@ COMMENT 'Silver層: Definition 3 によるRA患者マスタ（ICD-10 + DMARDs �
 AS
 SELECT
     pb.patient_id,
-    pb.共通キー,
+    pb.`共通キー`,
     pb.age,
     pb.age_group,
     pb.sex,
@@ -352,9 +352,9 @@ SELECT
     END AS any_RA_surgery
 
 FROM ra_patients_base pb
-LEFT JOIN drug_usage du ON pb.共通キー = du.共通キー
-LEFT JOIN procedure_usage pu ON pb.共通キー = pu.共通キー
-LEFT JOIN dmard_prescription_months dpm ON pb.共通キー = dpm.共通キー;
+LEFT JOIN drug_usage du ON pb.`共通キー` = du.`共通キー`
+LEFT JOIN procedure_usage pu ON pb.`共通キー` = pu.`共通キー`
+LEFT JOIN dmard_prescription_months dpm ON pb.`共通キー` = dpm.`共通キー`;
 
 -- 挿入件数を確認
 SELECT COUNT(*) AS inserted_records
