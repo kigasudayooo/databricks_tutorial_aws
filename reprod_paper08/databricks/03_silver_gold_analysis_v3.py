@@ -17,11 +17,11 @@
 # MAGIC
 # MAGIC ---
 # MAGIC
-# MAGIC ## 研究者にとっての価値
+# MAGIC ## 研究者がDatabricksで分析を実行することの価値
 # MAGIC
 # MAGIC ### 再現性の担保
-# MAGIC - **自己再現性**: このノートブックを保存すれば、半年後も同じ解析を再実行可能
-# MAGIC - **他者による再現**: 共同研究者や査読者が同じ環境で結果を検証可能
+# MAGIC - 再現性が高く、管理が容易: このノートブックだけを保存すれば、同じ解析を再実行可能
+# MAGIC - 他者による再現も容易: 共同研究者や査読者が同じ環境で結果を検証可能
 # MAGIC - **透明性**: 解析手順が全て記録され、Supplementary Materialとして論文に添付可能
 # MAGIC
 # MAGIC ### 試行錯誤の高速化
@@ -177,6 +177,10 @@ print(f"DMARDsコード: {len(ALL_DMARD_CODES)}種類")
 # MAGIC - 年齢層の定義を変更したい場合、AGE_BINSとAGE_LABELSを変更するだけで、全ての集計に反映される
 # MAGIC - 集計ロジックは関数化されているため、バグがあっても修正箇所は1箇所のみ
 # MAGIC - 他の研究プロジェクトでも、これらの関数を再利用可能
+
+# COMMAND ----------
+
+# MAGIC %pip install matplotlib_fontja
 
 # COMMAND ----------
 
