@@ -1,25 +1,14 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # Silver & Gold Layer: RA患者分析パイプライン（統合版）
-# MAGIC
-# MAGIC このノートブックでは、Bronze層データからSilver層の作成、Gold層の分析まで一貫して実行します。
-# MAGIC
-# MAGIC ## 前提条件
-# MAGIC - Bronze層のテーブルが作成され、データが生成済みであること
-# MAGIC - Bronze層の列名は英語（common_key, receipt_id等）
+# MAGIC # RA患者分析パイプライン
 # MAGIC
 # MAGIC ## 実行内容
-# MAGIC 1. **Silver層**: RA患者抽出（Definition 3: ICD-10 + DMARDs ≥2ヶ月）
-# MAGIC 2. **Gold層**: 年齢層別分析（Table 2-4）と可視化
+# MAGIC 1. Silver層の実装
+# MAGIC   - RAの対象患者として、論文で定義されていた、ICD-10コードがリウマチに該当かつ、治療薬（DMARDs）を年間で2ヶ月以上服薬している者と仮定し、これらのテーブルを作成した。
+# MAGIC 2. Gold層として分析
+# MAGIC   - 上で作成したシルバー相当のテーブルをもとに、年齢層別の分析と可視化を行った
 # MAGIC
-# MAGIC ## RA患者定義
 # MAGIC
-# MAGIC | 定義 | 条件 | 期待される患者数 | 有病率 |
-# MAGIC |------|------|------------------|--------|
-# MAGIC | Definition 0 | ICD-10コードのみ | ~800-900 | ~0.8-0.9% |
-# MAGIC | Definition 2 | ICD-10 + DMARDs ≥1ヶ月 | ~690 | ~0.69% |
-# MAGIC | **Definition 3** | **ICD-10 + DMARDs ≥2ヶ月** | **~650** | **~0.65%** |
-# MAGIC | Definition 4 | ICD-10 + DMARDs ≥6ヶ月 | ~460 | ~0.46% |
 
 # COMMAND ----------
 
@@ -28,17 +17,16 @@
 
 # COMMAND ----------
 
+# 日本語を豆腐にしないためのパッケージ。初回のみ実行
+%pip install matplotlib_fontja
+
+# COMMAND ----------
+
 from pyspark.sql import functions as F
 from pyspark.sql.window import Window
 import matplotlib.pyplot as plt
 import matplotlib
-
-# matplotlib設定
-matplotlib.rcParams['font.size'] = 10
-
-print("=" * 60)
-print("Silver & Gold Layer 分析パイプラインを開始します")
-print("=" * 60)
+import matplotlib_fontja
 
 # COMMAND ----------
 

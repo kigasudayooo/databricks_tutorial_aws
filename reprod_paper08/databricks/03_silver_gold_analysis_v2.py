@@ -1,41 +1,41 @@
 # Databricks notebook source
 # MAGIC %md
 # MAGIC # RA患者コホート分析
-# MAGIC 
+# MAGIC
 # MAGIC NDBデータからRA（関節リウマチ）患者を抽出し、年齢層別の薬剤使用率・手術実施率を集計する。
-# MAGIC 
+# MAGIC
 # MAGIC ---
-# MAGIC 
+# MAGIC
 # MAGIC ## このノートブックでできること
-# MAGIC 
+# MAGIC
 # MAGIC | 処理 | 内容 |
 # MAGIC |------|------|
 # MAGIC | 患者抽出 | ICD-10コードとDMARDs処方月数でRA患者を定義・抽出 |
 # MAGIC | 薬剤集計 | csDMARDs、bDMARDs、tsDMARDs、ステロイドの使用率を年齢層別に集計 |
 # MAGIC | 手術集計 | 人工関節置換術、関節形成術等の実施率を年齢層別に集計 |
 # MAGIC | 結果保存 | Silver/Gold層に保存し、SQLやBIツールから参照可能にする |
-# MAGIC 
+# MAGIC
 # MAGIC ---
-# MAGIC 
+# MAGIC
 # MAGIC ## 入出力
-# MAGIC 
+# MAGIC
 # MAGIC **入力（Bronze層）**
 # MAGIC - `bronze.patients` : 患者マスタ
 # MAGIC - `bronze.sy_disease` : 傷病名
 # MAGIC - `bronze.iy_medication` : 医薬品
 # MAGIC - `bronze.si_procedure` : 診療行為
 # MAGIC - `bronze.re_receipt` : レセプト
-# MAGIC 
+# MAGIC
 # MAGIC **出力（Silver/Gold層）**
 # MAGIC - `silver.ra_patients` : RA患者マスタ（1患者1行、各種フラグ付き）
 # MAGIC - `gold.age_distribution` : 年齢層別患者数・有病率
 # MAGIC - `gold.medication_usage` : 年齢層別薬剤使用率
 # MAGIC - `gold.procedure_usage` : 年齢層別手術実施率
-# MAGIC 
+# MAGIC
 # MAGIC ---
-# MAGIC 
+# MAGIC
 # MAGIC ## 実行方法
-# MAGIC 
+# MAGIC
 # MAGIC 1. 「1. 設定」で分析パラメータを確認・変更
 # MAGIC 2. Run All で全セル実行
 # MAGIC 3. データ更新時・定義変更時も Run All で再実行
@@ -44,7 +44,7 @@
 
 # MAGIC %md
 # MAGIC ## 1. 設定
-# MAGIC 
+# MAGIC
 # MAGIC 分析の定義をここで設定する。定義を変更する場合はこのセクションのみ修正する。
 
 # COMMAND ----------
@@ -185,7 +185,7 @@ def sort_by_age_group(df):
 
 # MAGIC %md
 # MAGIC ## 3. データ取得
-# MAGIC 
+# MAGIC
 # MAGIC Bronze層からデータを取得する。
 
 # COMMAND ----------
@@ -232,7 +232,7 @@ df_dmard_months.describe("prescription_months").show()
 
 # MAGIC %md
 # MAGIC ## 4. 患者抽出
-# MAGIC 
+# MAGIC
 # MAGIC RA候補のうち、DMARDs処方月数が閾値以上の患者を抽出する。
 
 # COMMAND ----------
@@ -252,7 +252,7 @@ print(f"RA患者数（DMARDs {DMARD_MONTHS_THRESHOLD}ヶ月以上）: {n_ra:,}")
 
 # MAGIC %md
 # MAGIC ### 参考: 定義別の患者数
-# MAGIC 
+# MAGIC
 # MAGIC `DMARD_MONTHS_THRESHOLD` を変更すれば異なる定義での分析が可能。
 
 # COMMAND ----------
@@ -295,16 +295,6 @@ drug_case_clauses.append(
     f"MAX(CASE WHEN drug_code IN ({sql_list(CS_CODES)}) THEN 1 ELSE 0 END) AS CS"
 )
 
-# SQLで薬剤使用フラグを作成
-df_drug_flags = spark.sql(f"""
-SELECT
-    common_key,
-    {', '.join(drug_case_clauses)}
-FROM {CATALOG}.{SCHEMA_BRONZE}.iy_medication
-WHERE common_key IN (SELECT common_key FROM ra_patients_temp)
-GROUP BY common_key
-""".replace("ra_patients_temp", f"({df_ra_keys.select('common_key').toPandas()['common_key'].apply(lambda x: f\"'{x}'\").str.cat(sep=', ')})"))
-
 # 上記は大規模データでは非効率なので、実際には一時ビューを使う
 df_ra_keys.createOrReplaceTempView("ra_patients_temp")
 
@@ -341,7 +331,7 @@ WHERE si.common_key IN (SELECT common_key FROM ra_patients_temp)
 GROUP BY si.common_key
 """)
 
-print(f"診療行為フラグ作成完了: {df_proc_flags.count():,}件")
+# print(f"診療行為フラグ作成完了: {df_proc_flags.count():,}件")
 
 # COMMAND ----------
 
@@ -430,10 +420,10 @@ df_all_by_age = add_age_group(df_all).groupBy("age_group").agg(
 df_age_dist = (
     df_ra_by_age
     .join(df_all_by_age, "age_group", "left")
-    .withColumn("pct_of_total", F.round(F.col("n") / total_ra * 100, 1))
-    .withColumn("female_pct", F.round(F.col("n_female") / F.col("n") * 100, 1))
-    .withColumn("fm_ratio", F.round(F.col("n_female") / F.col("n_male"), 2))
-    .withColumn("prevalence", F.round(F.col("n") / F.col("n_pop") * 100, 2))
+    .withColumn("pct_of_total", F.round(F.col("n") / F.when(F.lit(total_ra) == 0, None).otherwise(F.lit(total_ra)) * 100, 1))
+    .withColumn("female_pct", F.round(F.col("n_female") / F.when(F.col("n") == 0, None).otherwise(F.col("n")) * 100, 1))
+    .withColumn("fm_ratio", F.round(F.col("n_female") / F.when(F.col("n_male") == 0, None).otherwise(F.col("n_male")), 2))
+    .withColumn("prevalence", F.round(F.col("n") / F.when(F.col("n_pop") == 0, None).otherwise(F.col("n_pop")) * 100, 2))
     .select("age_group", "n", "pct_of_total", "female_pct", "fm_ratio", "prevalence")
 )
 
@@ -441,8 +431,8 @@ df_age_dist = (
 n_female = df_ra.filter("sex = '2'").count()
 n_male = df_ra.filter("sex = '1'").count()
 total_row = spark.createDataFrame([
-    ("Total", total_ra, 100.0, round(n_female/total_ra*100, 1), 
-     round(n_female/n_male, 2), round(total_ra/total_pop*100, 2))
+    ("Total", total_ra, 100.0, round(n_female/total_ra*100, 1) if total_ra != 0 else None, 
+     round(n_female/n_male, 2) if n_male != 0 else None, round(total_ra/total_pop*100, 2) if total_pop != 0 else None)
 ], ["age_group", "n", "pct_of_total", "female_pct", "fm_ratio", "prevalence"])
 
 df_age_dist = sort_by_age_group(df_age_dist.union(total_row))
@@ -603,27 +593,27 @@ print("=" * 50)
 # MAGIC %md
 # MAGIC ---
 # MAGIC ## 完了
-# MAGIC 
+# MAGIC
 # MAGIC 生成されたテーブル:
-# MAGIC 
+# MAGIC
 # MAGIC | 層 | テーブル | 内容 |
 # MAGIC |----|---------|------|
 # MAGIC | Silver | `ra_patients` | RA患者マスタ（1患者1行） |
 # MAGIC | Gold | `age_distribution` | 年齢層別患者数・有病率 |
 # MAGIC | Gold | `medication_usage` | 年齢層別薬剤使用率 |
 # MAGIC | Gold | `procedure_usage` | 年齢層別手術実施率 |
-# MAGIC 
+# MAGIC
 # MAGIC ---
-# MAGIC 
+# MAGIC
 # MAGIC ### 定義を変更する場合
-# MAGIC 
+# MAGIC
 # MAGIC 「1. 設定」セクションの `DMARD_MONTHS_THRESHOLD` を変更して Run All
-# MAGIC 
+# MAGIC
 # MAGIC ### データが更新された場合
-# MAGIC 
+# MAGIC
 # MAGIC Run All で Silver/Gold 層が再作成される
-# MAGIC 
+# MAGIC
 # MAGIC ### 結果を他ツールで使う場合
-# MAGIC 
+# MAGIC
 # MAGIC - SQL: `SELECT * FROM {CATALOG}.{SCHEMA_GOLD}.medication_usage`
 # MAGIC - BI: カタログから直接接続可能
