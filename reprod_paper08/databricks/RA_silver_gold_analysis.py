@@ -6,7 +6,7 @@
 # MAGIC
 # MAGIC ---
 # MAGIC
-# MAGIC ## このノートブックでできること
+# MAGIC ## 処理の概要
 # MAGIC
 # MAGIC | 処理 | 内容 |
 # MAGIC |------|------|
@@ -17,26 +17,43 @@
 # MAGIC
 # MAGIC ---
 # MAGIC
-# MAGIC ## 研究者がDatabricksで分析を実行することの価値
+# MAGIC ## Databricksで分析を実行することのメリット
 # MAGIC
 # MAGIC ### 再現性の担保
-# MAGIC - 再現性が高く、管理が容易: このノートブックだけを保存すれば、同じ解析を再実行可能
-# MAGIC - 他者による再現も容易: 共同研究者や査読者が同じ環境で結果を検証可能
-# MAGIC - **透明性**: 解析手順が全て記録され、Supplementary Materialとして論文に添付可能
+# MAGIC - 再現性が高く、管理が容易
+# MAGIC   - このノートブックだけを保存すれば、同じ解析を再実行可能
+# MAGIC - 他者による再現も容易
+# MAGIC   - requirements.txtを用いたパッケージ管理が容易
+# MAGIC     - 特に、pythonのように開発が盛んな言語は、パッケージのバージョン違いにより、関数のオプションが変わることもよくある
+# MAGIC     - Databricksでは、あらかじめこれらのリストを用意して、安定した動作を可能にする
+# MAGIC     - [ソース](https://docs.databricks.com/aws/ja/libraries/workspace-files-libraries)
+# MAGIC
 # MAGIC
 # MAGIC ### 試行錯誤の高速化
 # MAGIC - **パラメータ変更**: `DMARD_MONTHS_THRESHOLD`を変更するだけで異なる定義での分析が可能
-# MAGIC - **感度分析**: 査読者から「異なる定義で試して」と言われても、Run Allで即座に対応
-# MAGIC - **対象患者数の確認**: 研究計画段階で、実際のデータで患者数を確認できる
-# MAGIC
-# MAGIC ### データ管理の一元化
-# MAGIC - **ファイル散乱の防止**: `ra_patients_final_v2.csv`のようなファイルが増殖しない
-# MAGIC - **最新版の明確化**: Silver/Goldテーブルが常に最新状態
-# MAGIC - **履歴管理**: Delta Lakeにより過去の状態も参照可能
+# MAGIC - ファイル増殖の防止: `ra_patients_final_v2`のような正しいものがわからないファイルが増殖しない
+# MAGIC - 履歴管理: Delta Lakeにより過去の状態も参照可能
 # MAGIC
 # MAGIC ### 継続性
-# MAGIC - **年次更新**: Bronze層データ更新時にRun Allで最新の集計を自動生成
-# MAGIC - **引き継ぎ**: 担当者変更時もノートブックがあれば解析内容を継承可能
+# MAGIC - データ更新時の対応: Bronze層データ更新時にRun Allで最新の集計を自動生成
+# MAGIC
+# MAGIC ### その他検証を通じた論点
+# MAGIC - 分析の高度さとデータサイズに応じたインスタンス設定
+# MAGIC   - データサイズと想定される分析の内容に応じたインスタンス設定が必要
+# MAGIC     - 例えばPythonでは、高度な統計モデリングパッケージの多くは、pandasデータフレームを前提にしている。これは(py)sparkの分散処理に比べ、多くのメモリが必要
+# MAGIC     - また、研究対象データのサンプルサイズによってもメモリを検討する必要
+# MAGIC
+# MAGIC - 開発環境としてIDEもあり得るのではないか
+# MAGIC   - databricksは、VSCodeなどのIDE（統合開発環境）と連携が可能であることが分かった。
+# MAGIC   - 例えば、EC2で環境を立ち上げて、そこで用意されたVSCodeにdatabricksを連携させることで、コーディングに慣れたユーザーにはより使いやすくなる
+# MAGIC   - また、VSCodeであれば[SASの拡張もある](https://developer.sas.com/programming/vs_code_extension)ので、ライセンス等をクリアできれば、同じ環境でDatabricksでデータ抽出→SASで分析ということもできる可能性がある
+# MAGIC     - 更に、Claude Codeなどのコーディングサポートも利用可能
+# MAGIC
+# MAGIC - 対象のフィルタリング・用語検索にLLMを活用できないか
+# MAGIC   - 今回のリウマチの例を作る中で、ICD-10のコード上はリウマチに含まれるものの、臨床上はリウマチ因子が陰性であるため研究対象から除外する疾患（成人発症スチル病など）が存在した。これは、以下の様にになっており、素人目には分類の正しさを判別しにくい。
+# MAGIC     - M00-M99 筋骨格系及び結合組織の疾患 > M00-M25 関節障害 > M05-M14 炎症性多発性関節障害 > M06 その他の関節リウマチ > M06.1 成人発症スチル＜Still＞病
+# MAGIC   - ここで、例えば「関節リウマチについて調査したい」と依頼すると、先行研究や現行のICD-10コードを参照しながら、「一般的なRA疫学研究では、M05.x、M06.x（M06.1, M06.4を除く）を使用することが多いです。参考文献: [Nakajima 2021] ではM05, M06（M061, M064除外）, M08（M081, M082除外）を使用しています。」のように提案してくれるとありがたい。
+# MAGIC   - また、これを踏まえてコホートのボリューム感を確認できると嬉しい
 # MAGIC
 # MAGIC ---
 # MAGIC
@@ -57,13 +74,6 @@
 # MAGIC
 # MAGIC ---
 # MAGIC
-# MAGIC ## 実行方法
-# MAGIC
-# MAGIC 1. 「1. 設定」で分析パラメータを確認・変更
-# MAGIC 2. Run All で全セル実行
-# MAGIC 3. データ更新時・定義変更時も Run All で再実行
-# MAGIC
-# MAGIC **重要**: 設定を変更したら必ず全セルを再実行してください。Silver/Gold層が一貫性を保つために必要です。
 
 # COMMAND ----------
 
@@ -72,24 +82,11 @@
 # MAGIC
 # MAGIC 分析の定義をここで設定する。定義を変更する場合はこのセクションのみ修正する。
 # MAGIC
-# MAGIC ### パラメータ設計の意図
 # MAGIC
-# MAGIC **RA患者定義の閾値**
-# MAGIC DMARDs処方月数による絞り込みは、ICD-10コードのみでは含まれる「疑い例」や「除外診断」を排除し、
-# MAGIC 実際に治療を受けているRA患者を特定するためのものです。
+# MAGIC - RA患者定義
+# MAGIC   - DMARDs処方月数による絞り込みは、ICD-10コードのみでは含まれてしまう「疑い例」や「除外診断」を排除し、実際に治療を受けているRA患者を特定するためのもの。論文では、2ヶ月以上をメインにしていた。
 # MAGIC
-# MAGIC - **1ヶ月以上**: 感度重視（偽陰性を減らす）、サンプルサイズ最大
-# MAGIC - **2ヶ月以上**: バランス型、論文のメイン定義として推奨
-# MAGIC - **6ヶ月以上**: 特異度重視（偽陽性を減らす）、確実なRA患者のみ
 # MAGIC
-# MAGIC **年齢層の設定**
-# MAGIC 10歳刻みを基本としつつ、80歳以上を細分化しています。これは：
-# MAGIC - 高齢者では薬剤選択が年齢により大きく異なる
-# MAGIC - 80-84歳と85歳以上で治療方針が変わる臨床実態を反映
-# MAGIC
-# MAGIC **研究上の活用**
-# MAGIC - 査読者から「異なる定義での感度分析を」と言われた場合、この値を変更してRun All
-# MAGIC - 複数の定義での結果を並べて、定義の影響を評価可能
 
 # COMMAND ----------
 
@@ -101,9 +98,8 @@ SCHEMA_GOLD = "gold"
 
 # --- RA患者定義 ---
 # DMARDs処方月数の閾値
-# 1: Definition 2（1ヶ月以上）- 感度重視
-# 2: Definition 3（2ヶ月以上）← 論文のメイン定義（バランス型）
-# 6: Definition 4（6ヶ月以上）- 特異度重視
+# Definition 3（2ヶ月以上）← 論文のメイン定義
+# 閾値を定数として置く
 DMARD_MONTHS_THRESHOLD = 2
 
 # --- 年齢層の区切り ---
@@ -114,8 +110,6 @@ AGE_LABELS = ["16-19", "20-29", "30-39", "40-49", "50-59", "60-69", "70-79", "80
 # COMMAND ----------
 
 # --- RA関連ICD-10コード ---
-# M061（成人スティル病）とM064（炎症性多発性関節症）は除外
-# これらは厳密にはRAとは異なる疾患概念のため
 RA_ICD10_CODES = [
     # M05: 血清反応陽性関節リウマチ（抗CCP抗体陽性等）
     "M050", "M051", "M052", "M053", "M058", "M059",
@@ -129,24 +123,24 @@ RA_ICD10_CODES = [
 # 日本リウマチ学会のガイドラインに基づく分類
 DMARD_CODES = {
     # csDMARDs（conventional synthetic DMARDs: 従来型合成DMARD）
-    "MTX": ["1199101", "1199102"],       # メトトレキサート - 第一選択薬
-    "SSZ": ["1199201"],                   # サラゾスルファピリジン - 軽症例
-    "BUC": ["1199401"],                   # ブシラミン - 日本で開発
-    "TAC": ["1199301"],                   # タクロリムス - 免疫抑制剤
-    "IGT": ["1199501"],                   # イグラチモド - 日本で開発
-    "LEF": ["1199601"],                   # レフルノミド - MTX不応例
+    "MTX": ["1199101", "1199102"],       # メトトレキサート
+    "SSZ": ["1199201"],                   # サラゾスルファピリジン 
+    "BUC": ["1199401"],                   # ブシラミン
+    "TAC": ["1199301"],                   # タクロリムス
+    "IGT": ["1199501"],                   # イグラチモド
+    "LEF": ["1199601"],                   # レフルノミド
     # bDMARDs（biological DMARDs: 生物学的DMARD）
     # 高額医療であり、csDMARDs不応例に使用
     "TNFI": ["4400101", "4400102", "4400103", "4400104", "4400105"],  # TNF阻害薬
     "IL6I": ["4400201", "4400202"],       # IL-6阻害薬（トシリズマブ等）
     "ABT":  ["4400301"],                  # アバタセプト（T細胞共刺激阻害）
     # tsDMARDs（targeted synthetic DMARDs: 分子標的型合成DMARD）
-    # 最新の治療薬、経口投与可能
+    # 最新の治療薬
     "JAKi": ["4400401", "4400402"],       # JAK阻害薬（トファシチニブ等）
 }
 
 # ステロイド（副腎皮質ステロイド）
-# 抗炎症目的で併用されるが、長期使用は副作用のリスク
+# 抗炎症目的で併用される
 CS_CODES = ["2454001", "2454002", "2454003"]
 
 # 全DMARDsコード（フラット化）
@@ -154,7 +148,7 @@ CS_CODES = ["2454001", "2454002", "2454003"]
 ALL_DMARD_CODES = [code for codes in DMARD_CODES.values() for code in codes]
 
 # --- 診療行為コード ---
-# 関節破壊が進行した場合の外科的介入を評価
+# 関節破壊が進行した場合の外科的介入
 PROCEDURE_TYPES = ["TJR", "ARTHROPLASTY", "SYNOVECTOMY", "ULTRASOUND", "BMD"]
 
 # COMMAND ----------
@@ -170,13 +164,12 @@ print(f"DMARDsコード: {len(ALL_DMARD_CODES)}種類")
 # MAGIC %md
 # MAGIC ## 2. ライブラリと共通関数
 # MAGIC
-# MAGIC このセクションでは、ノートブック全体で使用する共通関数を定義します。
-# MAGIC 関数として定義することで、コードの重複を避け、保守性を高めます。
+# MAGIC このセクションでは、ノートブック全体で使用する共通関数を定義。
+# MAGIC 関数として定義することで、コードの重複を避け、保守性を高める。
 # MAGIC
 # MAGIC **研究上のポイント**
 # MAGIC - 年齢層の定義を変更したい場合、AGE_BINSとAGE_LABELSを変更するだけで、全ての集計に反映される
-# MAGIC - 集計ロジックは関数化されているため、バグがあっても修正箇所は1箇所のみ
-# MAGIC - 他の研究プロジェクトでも、これらの関数を再利用可能
+# MAGIC - 集計ロジックは関数化されているため、必要に応じてここを修正すればいい
 
 # COMMAND ----------
 
@@ -256,30 +249,15 @@ def sort_by_age_group(df):
 # MAGIC ## 3. データ取得
 # MAGIC
 # MAGIC Bronze層からデータを取得する。
+# MAGIC このセクションでは、論文のデータフローに従い、まずICD-10コードでRA候補を抽出し、その後DMARDs処方で絞り込む。
 # MAGIC
-# MAGIC ### 研究上のポイント
-# MAGIC
-# MAGIC このセクションでは、まずICD-10コードでRA候補を抽出し、その後DMARDs処方で絞り込みます。
-# MAGIC 2段階の抽出により、各ステップでの患者数の変化を確認できます。
-# MAGIC
-# MAGIC **従来の課題**
-# MAGIC - IT部門に「RAの患者データをください」と依頼
-# MAGIC - 数日後にデータが届く
-# MAGIC - 「想定より少ない」→ 定義を緩めて再依頼
-# MAGIC - さらに数日待つ...
-# MAGIC
-# MAGIC **このノートブックでの解決**
-# MAGIC - ICD-10のみの候補数をその場で確認
-# MAGIC - DMARDs閾値を変えた場合の患者数もその場で確認
-# MAGIC - 研究計画段階で現実的な患者数を把握し、倫理審査に提出できる
 
 # COMMAND ----------
 
 # MAGIC %md
 # MAGIC ### 3.1 RA候補患者の抽出
 # MAGIC
-# MAGIC まずICD-10コードでRA関連診断のある患者を抽出します。
-# MAGIC この時点では「疑い」や「除外診断」も含まれる可能性があります。
+# MAGIC まずICD-10コードでRA関連診断のある患者を抽出。
 
 # COMMAND ----------
 
@@ -298,10 +276,10 @@ print(f"RA候補患者数（ICD-10コードあり）: {n_candidates:,}")
 # MAGIC %md
 # MAGIC ### 3.2 DMARDs処方月数の計算
 # MAGIC
-# MAGIC 各患者について、DMARDsが処方された「月数」をカウントします。
-# MAGIC これは「処方回数」ではなく、「何ヶ月分の処方があったか」を示します。
+# MAGIC 各患者について、DMARDsが処方された「月数」をカウント。
+# MAGIC これは「処方回数」ではなく、「何ヶ月分の処方があったか」を示す。
 # MAGIC
-# MAGIC **臨床的意義**
+# MAGIC たとえば、以下のような考え方
 # MAGIC - 1回だけの処方 → 試験的投与や除外診断の可能性
 # MAGIC - 2ヶ月以上の処方 → 継続的な治療を受けている確度が高い
 # MAGIC - 6ヶ月以上の処方 → 確実にRA治療を受けている慢性患者
@@ -349,18 +327,13 @@ print(f"RA患者数（DMARDs {DMARD_MONTHS_THRESHOLD}ヶ月以上）: {n_ra:,}")
 
 # MAGIC %md
 # MAGIC ### 参考: 定義別の患者数
-# MAGIC
 # MAGIC `DMARD_MONTHS_THRESHOLD` を変更すれば異なる定義での分析が可能。
 # MAGIC
 # MAGIC ### 研究上の活用
 # MAGIC
 # MAGIC **査読対応での活用**
-# MAGIC - 査読者から「定義が厳しすぎる/緩すぎる」とコメントされた場合、このセクションの結果を見て妥当性を説明できる
-# MAGIC - 「感度分析として他の定義でも試してみて」と言われた場合、閾値を変更してRun Allで即座に対応可能
+# MAGIC - 査読者から「定義が厳しすぎる/緩すぎる」や「感度分析として他の定義でも試してみて」とのようなコメントが来た場合、閾値を変更してRun Allで即座に対応可能
 # MAGIC
-# MAGIC **研究計画での活用**
-# MAGIC - 倫理審査前に、各定義での患者数を確認し、統計的検出力を検討できる
-# MAGIC - サンプルサイズが不足しそうなら、定義を調整してから研究計画書を提出できる
 
 # COMMAND ----------
 
@@ -386,20 +359,15 @@ for name, threshold, desc in [
 # MAGIC
 # MAGIC ### データ構造の変換
 # MAGIC
-# MAGIC ここでは、トランザクション型データ（1処方1行）を集約型データ（1患者1行）に変換します。
-# MAGIC 各患者について、各薬剤・診療行為を「使用した/しなかった」の0/1フラグとして保持します。
-# MAGIC
-# MAGIC **研究上の意義**
-# MAGIC - **集計の効率化**: フラグ化することで、年齢層別の使用率計算が単純な平均値計算になる
-# MAGIC - **多変量解析への対応**: ロジスティック回帰等の説明変数として直接使用可能
-# MAGIC - **クロス集計**: 薬剤間の併用パターン分析が容易
+# MAGIC ここでは、NDBの構造であるトランザクション型データ（1処方1行）を集約型データ（1患者1行）に変換する。
+# MAGIC 各患者について、各薬剤・診療行為を「使用した/しなかった」の0/1フラグとして保持する。
 
 # COMMAND ----------
 
 # MAGIC %md
 # MAGIC ### 5.1 薬剤使用フラグ
 # MAGIC
-# MAGIC 各患者について、期間中に1回でも処方があれば「使用あり（1）」とします。
+# MAGIC 各患者について、期間中に1回でも処方があれば「使用あり（1）」とする。
 
 # COMMAND ----------
 
@@ -464,12 +432,6 @@ GROUP BY si.common_key
 # MAGIC - 1患者1行の形式で、全ての情報を統合
 # MAGIC - 薬剤・診療行為を0/1フラグとして保持
 # MAGIC - 後続の集計（Gold層）の基礎データとなる
-# MAGIC
-# MAGIC **研究上の利点**
-# MAGIC - **再利用性**: 異なる集計軸（性別、地域等）での分析にも対応可能
-# MAGIC - **データ品質**: この段階で欠損値処理やフラグ作成を完了させ、Gold層の集計をシンプルに
-# MAGIC - **共有**: 共同研究者にSilver層テーブルを共有すれば、各自が自由に集計可能
-# MAGIC - **監査証跡**: いつ誰がどのデータを使ったかがUnity Catalogで記録される
 
 # COMMAND ----------
 
@@ -519,18 +481,9 @@ print(f"Silver層保存完了: {CATALOG}.{SCHEMA_SILVER}.ra_patients ({n_saved:,
 # MAGIC %md
 # MAGIC ## 7. Gold層: 年齢層別集計
 # MAGIC
-# MAGIC ### Gold層の意義
-# MAGIC
-# MAGIC **Gold層の役割**
 # MAGIC - 論文の表・図に直接使える形式に集計
-# MAGIC - BIツール（Tableau、Power BI等）で可視化可能
-# MAGIC - SQLで簡単にアクセス可能
 # MAGIC
-# MAGIC **研究上の利点**
-# MAGIC - **論文執筆の効率化**: このテーブルをCSVエクスポートして論文に貼り付けるだけ
-# MAGIC - **プレゼン資料作成**: Gold層テーブルからグラフを直接作成
-# MAGIC - **結果の再現性**: 「Table 2の数値はどこから?」→「このGoldテーブルです」と明示できる
-# MAGIC - **データ更新への対応**: Bronze層が更新されても、Run Allで最新の集計を自動生成
+# MAGIC
 
 # COMMAND ----------
 
@@ -666,21 +619,8 @@ display(spark.table(f"{CATALOG}.{SCHEMA_GOLD}.procedure_usage"))
 # MAGIC %md
 # MAGIC ## 9. 可視化
 # MAGIC
-# MAGIC Goldテーブルのデータを用いて、論文やプレゼン用のグラフを作成します。
+# MAGIC Goldテーブルのデータを用いて、論文やプレゼン用のグラフを作成。
 # MAGIC
-# MAGIC ### 研究上の活用
-# MAGIC
-# MAGIC **論文での使用**
-# MAGIC - これらのグラフを高解像度でエクスポートし、論文のFigureとして使用可能
-# MAGIC - グラフの体裁（色、フォント等）を調整して、ジャーナルのスタイルに合わせる
-# MAGIC
-# MAGIC **プレゼンテーションでの使用**
-# MAGIC - 学会発表用のスライドに直接貼り付け可能
-# MAGIC - データ更新時もこのセルを再実行するだけで最新のグラフを生成
-# MAGIC
-# MAGIC **探索的データ解析**
-# MAGIC - 年齢層による傾向を視覚的に把握
-# MAGIC - 異常値や予想外のパターンを発見
 
 # COMMAND ----------
 
@@ -725,125 +665,3 @@ ax4.tick_params(axis="x", rotation=45)
 
 plt.tight_layout()
 display(fig)
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ## 10. サマリー
-# MAGIC
-# MAGIC ### このノートブックの成果物
-# MAGIC
-# MAGIC | データ層 | テーブル名 | 用途 |
-# MAGIC |---------|-----------|------|
-# MAGIC | Silver | `ra_patients` | 1患者1行の詳細データ、追加分析の基礎 |
-# MAGIC | Gold | `age_distribution` | 論文Table 1相当、患者背景の記述 |
-# MAGIC | Gold | `medication_usage` | 論文Table 2相当、治療パターン分析 |
-# MAGIC | Gold | `procedure_usage` | 論文Table 3相当、外科的介入の評価 |
-# MAGIC
-# MAGIC ### 次のステップ
-# MAGIC
-# MAGIC **このノートブックで完成していること**
-# MAGIC - RA患者の抽出・集計
-# MAGIC - 年齢層別の基本的な記述統計
-# MAGIC
-# MAGIC **さらに発展させるには**
-# MAGIC - 経年変化の分析（複数年のデータを結合）
-# MAGIC - 地域差の分析（都道府県別の集計）
-# MAGIC - 多変量解析（ロジスティック回帰等）
-# MAGIC - 医療費の分析（bDMARDsの医療費インパクト）
-# MAGIC
-# MAGIC これらの発展的分析も、Silver層テーブルを基に別のノートブックで実施できます。
-
-# COMMAND ----------
-
-# 主要指標
-print("=" * 50)
-print("分析結果サマリー")
-print("=" * 50)
-print(f"RA患者定義: ICD-10 + DMARDs {DMARD_MONTHS_THRESHOLD}ヶ月以上")
-print(f"RA患者数: {total_ra:,}")
-print(f"有病率: {total_ra / total_pop * 100:.2f}%")
-print(f"女性比率: {n_female / total_ra * 100:.1f}%")
-print()
-print("薬剤使用率:")
-med_totals = spark.table(f"{CATALOG}.{SCHEMA_GOLD}.medication_usage").filter("age_group = 'Total'").first()
-print(f"  MTX: {med_totals['MTX']}%")
-print(f"  bDMARDs: {med_totals['bDMARDs']}%")
-print(f"  CS: {med_totals['CS']}%")
-print()
-print("手術実施率:")
-proc_totals = spark.table(f"{CATALOG}.{SCHEMA_GOLD}.procedure_usage").filter("age_group = 'Total'").first()
-print(f"  RA関連手術: {proc_totals['any_RA_surgery']}%")
-print("=" * 50)
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ---
-# MAGIC ## 完了
-# MAGIC
-# MAGIC 生成されたテーブル:
-# MAGIC
-# MAGIC | 層 | テーブル | 内容 |
-# MAGIC |----|---------|------|
-# MAGIC | Silver | `ra_patients` | RA患者マスタ（1患者1行） |
-# MAGIC | Gold | `age_distribution` | 年齢層別患者数・有病率 |
-# MAGIC | Gold | `medication_usage` | 年齢層別薬剤使用率 |
-# MAGIC | Gold | `procedure_usage` | 年齢層別手術実施率 |
-# MAGIC
-# MAGIC ---
-# MAGIC
-# MAGIC ## 研究実務でのTips
-# MAGIC
-# MAGIC ### 定義を変更する場合
-# MAGIC 1. 「1. 設定」セクションの `DMARD_MONTHS_THRESHOLD` を変更
-# MAGIC 2. Run All で全セル実行
-# MAGIC 3. セクション10のサマリーで結果を確認
-# MAGIC 4. 異なる定義での結果を比較し、感度分析として論文に記載
-# MAGIC
-# MAGIC ### データが更新された場合（年次更新等）
-# MAGIC 1. Bronze層に新年度のデータを追加
-# MAGIC 2. このノートブックをRun All
-# MAGIC 3. Silver/Gold層が自動で再生成される
-# MAGIC 4. 過去との比較は、Delta Lakeのタイムトラベル機能で可能
-# MAGIC
-# MAGIC ### 結果を論文・プレゼンで使う場合
-# MAGIC ```sql
-# MAGIC -- SQLでGoldテーブルを取得
-# MAGIC SELECT * FROM reprod_paper08.gold.medication_usage
-# MAGIC ```
-# MAGIC - CSVエクスポートして論文の表に使用
-# MAGIC - Power BI/Tableauで可視化してプレゼン資料に使用
-# MAGIC - このノートブック自体をSupplementary Materialとして投稿
-# MAGIC
-# MAGIC ### 共同研究者と共有する場合
-# MAGIC 1. このノートブックをワークスペースで共有（閲覧権限）
-# MAGIC 2. Silver/Goldテーブルへのアクセス権限を付与
-# MAGIC 3. 共同研究者は同じ環境で結果を確認・検証可能
-# MAGIC 4. 変更履歴はGit連携で管理
-# MAGIC
-# MAGIC ### 監査・倫理審査対応
-# MAGIC - Unity Catalogのアクセスログで「誰がいつデータを参照したか」を記録
-# MAGIC - ノートブックの実行履歴で「いつどの設定で解析したか」を追跡可能
-# MAGIC - Delta Lakeの履歴で「データの変更」を追跡可能
-# MAGIC
-# MAGIC ### トラブルシューティング
-# MAGIC - **患者数が想定より少ない**: セクション4の定義別患者数を確認し、閾値を調整
-# MAGIC - **エラーが出る**: セルを上から順に実行し、どこでエラーが出るかを特定
-# MAGIC - **結果が前回と異なる**: Bronze層データが更新されていないか確認
-# MAGIC
-# MAGIC ---
-# MAGIC
-# MAGIC ## 参考: Delta Lakeタイムトラベルの使い方
-# MAGIC
-# MAGIC ```sql
-# MAGIC -- 2024年1月1日時点のデータを参照
-# MAGIC SELECT * FROM reprod_paper08.silver.ra_patients
-# MAGIC VERSION AS OF '2024-01-01'
-# MAGIC
-# MAGIC -- 10世代前のデータを参照
-# MAGIC SELECT * FROM reprod_paper08.silver.ra_patients
-# MAGIC VERSION AS OF 10
-# MAGIC ```
-# MAGIC
-# MAGIC これにより、「論文投稿時のデータ」「査読対応時のデータ」を明確に区別して管理できます。
