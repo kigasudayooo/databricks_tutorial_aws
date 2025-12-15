@@ -26,6 +26,7 @@
 # MAGIC   - requirements.txtを用いたパッケージ管理が容易
 # MAGIC     - 特に、pythonのように開発が盛んな言語は、パッケージのバージョン違いにより、関数のオプションが変わることもよくある
 # MAGIC     - Databricksでは、あらかじめこれらのリストを用意して、安定した動作を可能にする
+# MAGIC       - [requirements.txtの例](https://note.nkmk.me/python-pip-install-requirements/)
 # MAGIC     - [ソース](https://docs.databricks.com/aws/ja/libraries/workspace-files-libraries)
 # MAGIC
 # MAGIC
@@ -39,20 +40,37 @@
 # MAGIC
 # MAGIC ### その他検証を通じた論点
 # MAGIC - 分析の高度さとデータサイズに応じたインスタンス設定
+# MAGIC
 # MAGIC   - データサイズと想定される分析の内容に応じたインスタンス設定が必要
+# MAGIC
 # MAGIC     - 例えばPythonでは、高度な統計モデリングパッケージの多くは、pandasデータフレームを前提にしている。これは(py)sparkの分散処理に比べ、多くのメモリが必要
+# MAGIC
+# MAGIC       - 具体的には、傾向スコアマッチングや生存分析（lifelines、statsmodels等）はpandasデータフレームを前提としており、Sparkの分散処理では実行できない。そのため、対象患者数が多い場合や、ブートストラップのように繰り返し処理が必要な場合は、大きなメモリを持つインスタンスが必要になる。
+# MAGIC
 # MAGIC     - また、研究対象データのサンプルサイズによってもメモリを検討する必要
 # MAGIC
+# MAGIC
 # MAGIC - 開発環境としてIDEもあり得るのではないか
+# MAGIC
 # MAGIC   - databricksは、VSCodeなどのIDE（統合開発環境）と連携が可能であることが分かった。
+# MAGIC
 # MAGIC   - 例えば、EC2で環境を立ち上げて、そこで用意されたVSCodeにdatabricksを連携させることで、コーディングに慣れたユーザーにはより使いやすくなる
+# MAGIC
+# MAGIC     - デバッグ、コード補完、リファクタリング etc...
+# MAGIC
 # MAGIC   - また、VSCodeであれば[SASの拡張もある](https://developer.sas.com/programming/vs_code_extension)ので、ライセンス等をクリアできれば、同じ環境でDatabricksでデータ抽出→SASで分析ということもできる可能性がある
+# MAGIC
 # MAGIC     - 更に、Claude Codeなどのコーディングサポートも利用可能
 # MAGIC
+# MAGIC
 # MAGIC - 対象のフィルタリング・用語検索にLLMを活用できないか
+# MAGIC
 # MAGIC   - 今回のリウマチの例を作る中で、ICD-10のコード上はリウマチに含まれるものの、臨床上はリウマチ因子が陰性であるため研究対象から除外する疾患（成人発症スチル病など）が存在した。これは、以下の様にになっており、素人目には分類の正しさを判別しにくい。
+# MAGIC
 # MAGIC     - M00-M99 筋骨格系及び結合組織の疾患 > M00-M25 関節障害 > M05-M14 炎症性多発性関節障害 > M06 その他の関節リウマチ > M06.1 成人発症スチル＜Still＞病
+# MAGIC
 # MAGIC   - ここで、例えば「関節リウマチについて調査したい」と依頼すると、先行研究や現行のICD-10コードを参照しながら、「一般的なRA疫学研究では、M05.x、M06.x（M06.1, M06.4を除く）を使用することが多いです。参考文献: [Nakajima 2021] ではM05, M06（M061, M064除外）, M08（M081, M082除外）を使用しています。」のように提案してくれるとありがたい。
+# MAGIC
 # MAGIC   - また、これを踏まえてコホートのボリューム感を確認できると嬉しい
 # MAGIC
 # MAGIC ---
